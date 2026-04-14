@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { Plus, FolderOpen, Image as ImageIcon, Search, X, ChevronDown, ArrowUpDown } from "lucide-react";
+import { Plus, FolderOpen, Image as ImageIcon, Search, X, ChevronDown } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/layout/app-shell";
 import { Button, Modal, Input } from "@/components/ui";
@@ -236,7 +236,7 @@ export default function ProjectsPage() {
               <option value="number">Nr.</option>
               <option value="name">A–Z</option>
             </select>
-            <ArrowUpDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-brand-gray-400 pointer-events-none" />
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-brand-gray-400 pointer-events-none" />
           </div>
         </div>
 

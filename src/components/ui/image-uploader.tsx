@@ -22,6 +22,7 @@ interface ImageUploadProps {
   userName?: string;
   isExternal?: boolean;
   externalName?: string;
+  subFolderId?: string;
   onComplete?: () => void;
   onClose?: () => void;
 }
@@ -32,6 +33,7 @@ export function ImageUploader({
   userName,
   isExternal,
   externalName,
+  subFolderId,
   onComplete,
   onClose,
 }: ImageUploadProps) {
@@ -87,6 +89,7 @@ export function ImageUploader({
           userName,
           isExternal,
           externalName,
+          subFolderId,
           onProgress: (pct) => {
             setFiles((prev) =>
               prev.map((x, idx) =>

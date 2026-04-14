@@ -9,7 +9,7 @@ import { useAuth } from "@/lib/auth-context";
 
 const navItems = [
   { href: "/projects", icon: LayoutGrid, label: "Projekte" },
-  { href: "/marketing", icon: Star, label: "Marketing", roles: ["admin", "marketing"] },
+  { href: "/marketing", icon: Star, label: "Marketing" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -22,9 +22,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     router.push("/login");
   };
 
-  const visibleNav = navItems.filter(
-    (item) => !item.roles || (user && item.roles.includes(user.role))
-  );
+  const visibleNav = navItems;
 
   return (
     <div className="min-h-screen bg-brand-gray-50 flex flex-col max-w-md mx-auto relative">
