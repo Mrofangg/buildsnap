@@ -28,11 +28,10 @@ import imageCompression from "browser-image-compression";
 
 export async function getUsers(): Promise<AppUser[]> {
   const snap = await getDocs(collection(db, "users"));
-  return snap.docs.map((d) => ({
-    uid: d.id,
-    ...d.data(),
-    createdAt: (d.data().createdAt as Timestamp)?.toDate() || new Date(),
-  })) as AppUser[];
+  return snap.docs.map((d) => {
+    const data = d.data() as Record<string, unknown>;
+    return { uid: d.id, ...data, createdAt: (data.createdAt as Timestamp)?.toDate() || new Date() } as AppUser;
+  });
 }
 
 // ── Projects ─────────────────────────────────────────────
@@ -83,11 +82,14 @@ export async function getProjects(options?: {
     );
   }
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({
-    id: d.id,
-    ...d.data(),
-    createdAt: (d.data().createdAt as Timestamp)?.toDate() || new Date(),
-  })) as Project[];
+  return snap.docs.map((d) => {
+    const data = d.data() as Record<string, unknown>;
+    return {
+      id: d.id,
+      ...data,
+      createdAt: (data.createdAt as Timestamp)?.toDate() || new Date(),
+    } as Project;
+  });
 }
 
 export async function getProject(id: string): Promise<Project | null> {
@@ -184,11 +186,10 @@ export async function getProjectImages(projectId: string): Promise<ProjectImage[
     orderBy("uploadedAt", "desc")
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({
-    id: d.id,
-    ...d.data(),
-    uploadedAt: (d.data().uploadedAt as Timestamp)?.toDate() || new Date(),
-  })) as ProjectImage[];
+  return snap.docs.map((d) => {
+    const data = d.data() as Record<string, unknown>;
+    return { id: d.id, ...data, uploadedAt: (data.uploadedAt as Timestamp)?.toDate() || new Date() } as ProjectImage;
+  });
 }
 
 export async function getAllImages(filters?: {
@@ -203,11 +204,10 @@ export async function getAllImages(filters?: {
     q = query(collection(db, "images"), where("isFavorite", "==", true), orderBy("uploadedAt", "desc"));
   }
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({
-    id: d.id,
-    ...d.data(),
-    uploadedAt: (d.data().uploadedAt as Timestamp)?.toDate() || new Date(),
-  })) as ProjectImage[];
+  return snap.docs.map((d) => {
+    const data = d.data() as Record<string, unknown>;
+    return { id: d.id, ...data, uploadedAt: (data.uploadedAt as Timestamp)?.toDate() || new Date() } as ProjectImage;
+  });
 }
 
 export async function toggleFavorite(imageId: string, current: boolean): Promise<void> {
@@ -241,7 +241,8 @@ export async function getUploadLinkByToken(token: string): Promise<UploadLink | 
   const snap = await getDocs(q);
   if (snap.empty) return null;
   const d = snap.docs[0];
-  return { ...d.data(), createdAt: (d.data().createdAt as Timestamp)?.toDate() || new Date() } as UploadLink;
+  const data = d.data() as Record<string, unknown>;
+  return { ...data, createdAt: (data.createdAt as Timestamp)?.toDate() || new Date() } as UploadLink;
 }
 
 export async function incrementLinkUploadCount(token: string): Promise<void> {
@@ -259,10 +260,10 @@ export async function deactivateUploadLink(token: string): Promise<void> {
 export async function getProjectUploadLinks(projectId: string): Promise<UploadLink[]> {
   const q = query(collection(db, "uploadLinks"), where("projectId", "==", projectId), orderBy("createdAt", "desc"));
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({
-    ...d.data(),
-    createdAt: (d.data().createdAt as Timestamp)?.toDate() || new Date(),
-  })) as UploadLink[];
+  return snap.docs.map((d) => {
+    const data = d.data() as Record<string, unknown>;
+    return { ...data, createdAt: (data.createdAt as Timestamp)?.toDate() || new Date() } as UploadLink;
+  });
 }
 
 // ── Marketing Assets ──────────────────────────────────────
@@ -313,11 +314,10 @@ export async function getMarketingAssets(): Promise<MarketingAsset[]> {
     orderBy("uploadedAt", "desc")
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => ({
-    id: d.id,
-    ...d.data(),
-    uploadedAt: (d.data().uploadedAt as Timestamp)?.toDate() || new Date(),
-  })) as MarketingAsset[];
+  return snap.docs.map((d) => {
+    const data = d.data() as Record<string, unknown>;
+    return { id: d.id, ...data, uploadedAt: (data.uploadedAt as Timestamp)?.toDate() || new Date() } as MarketingAsset;
+  });
 }
 
 export async function deleteMarketingAsset(asset: MarketingAsset): Promise<void> {
