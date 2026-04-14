@@ -233,28 +233,33 @@ export async function setCoverImage(projectId: string, imageUrl: string): Promis
 export async function getProjectSubFolders(projectId: string): Promise<ProjectSubFolder[]> {
   const q = query(
     collection(db, "projectSubFolders"),
-    where("projectId", "==", projectId),
-    orderBy("type", "asc"),
-    orderBy("order", "asc")
+    where("projectId", "==", projectId)
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => {
+  const folders = snap.docs.map((d) => {
     const data = d.data() as Record<string, unknown>;
     return { id: d.id, ...data, createdAt: (data.createdAt as Timestamp)?.toDate() || new Date() } as ProjectSubFolder;
+  });
+  // Sort client-side: Produktion before Montage, then by order
+  return folders.sort((a, b) => {
+    if (a.type !== b.type) return a.type === "Produktion" ? -1 : 1;
+    return (a.order ?? 0) - (b.order ?? 0);
   });
 }
 
 export async function createProjectSubFolder(projectId: string, type: SubFolderType, name: string): Promise<string> {
-  const existing = await getProjectSubFolders(projectId);
-  const sameType = existing.filter((f) => f.type === type);
   const docRef = await addDoc(collection(db, "projectSubFolders"), {
     projectId,
     type,
     name,
     createdAt: serverTimestamp(),
-    order: sameType.length,
+    order: Date.now(),
   });
   return docRef.id;
+}
+
+export async function renameProjectSubFolder(id: string, name: string): Promise<void> {
+  await updateDoc(doc(db, "projectSubFolders", id), { name });
 }
 
 export async function deleteProjectSubFolder(id: string): Promise<void> {

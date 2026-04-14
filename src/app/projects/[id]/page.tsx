@@ -5,7 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, Upload, Share2, Heart, Download, Trash2,
   Link2, CheckCircle, X, ImageIcon, MessageSquare,
-  Folder, FolderOpen, Plus, ChevronDown, ChevronRight
+  Folder, FolderOpen, Plus, ChevronDown, ChevronRight,
+  Pencil, CheckSquare, Square
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/layout/app-shell";
@@ -16,7 +17,8 @@ import {
   getProject, getProjectImages, toggleFavorite,
   deleteImage, createUploadLink, getProjectUploadLinks,
   deactivateUploadLink, setCoverImage, updateImageComment,
-  getProjectSubFolders, createProjectSubFolder, deleteProjectSubFolder
+  getProjectSubFolders, createProjectSubFolder, deleteProjectSubFolder,
+  renameProjectSubFolder
 } from "@/lib/db";
 import { Project, ProjectImage, UploadLink, ProjectSubFolder, SubFolderType } from "@/types";
 import { formatDate } from "@/lib/utils";
@@ -114,85 +116,132 @@ function LightboxModal({ image, onClose, onPrev, onNext, hasPrev, hasNext, onCom
 
 // ── Image card (mini) ──────────────────────────────────────
 
-function ImageThumb({ image, onClick, onFavorite, onDelete, onSetCover, canDelete, canSetCover, isCover }: {
+function ImageThumb({ image, onClick, onFavorite, onDelete, onSetCover, canDelete, canSetCover, isCover,
+  selectMode, selected, onToggleSelect }: {
   image: ProjectImage; onClick: () => void; onFavorite: () => void;
   onDelete: () => void; onSetCover: () => void;
   canDelete: boolean; canSetCover: boolean; isCover: boolean;
+  selectMode?: boolean; selected?: boolean; onToggleSelect?: () => void;
 }) {
   return (
-    <div className="relative rounded-2xl overflow-hidden bg-brand-gray-100 aspect-square group">
-      <img src={image.url} alt="" className="w-full h-full object-cover cursor-pointer" onClick={onClick} />
-      {isCover && (
-        <div className="absolute top-2 left-2 bg-brand-yellow text-brand-black text-[9px] font-bold px-1.5 py-0.5 rounded-lg">Titelbild</div>
-      )}
-      <button onClick={(e) => { e.stopPropagation(); onFavorite(); }}
-        className={`absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition-all ${image.isFavorite ? "bg-red-500 text-white" : "bg-black/30 text-white/80"}`}>
-        <Heart className="w-3.5 h-3.5" fill={image.isFavorite ? "white" : "none"} />
-      </button>
-      {image.comment && (
-        <div className="absolute bottom-2 left-2">
-          <MessageSquare className="w-3.5 h-3.5 text-brand-yellow" />
+    <div
+      className={`relative rounded-2xl overflow-hidden bg-brand-gray-100 aspect-square group ${selectMode ? "cursor-pointer" : ""} ${selected ? "ring-2 ring-brand-yellow" : ""}`}
+      onClick={selectMode ? onToggleSelect : undefined}
+    >
+      <img src={image.url} alt="" className={`w-full h-full object-cover ${selectMode ? "" : "cursor-pointer"}`}
+        onClick={selectMode ? undefined : onClick} />
+      {selectMode && (
+        <div className="absolute top-2 left-2">
+          {selected
+            ? <CheckSquare className="w-5 h-5 text-brand-yellow drop-shadow" />
+            : <Square className="w-5 h-5 text-white drop-shadow" />}
         </div>
       )}
-      <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {canSetCover && !isCover && (
-          <button onClick={(e) => { e.stopPropagation(); onSetCover(); }}
-            className="w-6 h-6 rounded-full bg-brand-yellow/90 flex items-center justify-center">
-            <ImageIcon className="w-3 h-3 text-brand-black" />
+      {!selectMode && isCover && (
+        <div className="absolute top-2 left-2 bg-brand-yellow text-brand-black text-[9px] font-bold px-1.5 py-0.5 rounded-lg">Titelbild</div>
+      )}
+      {!selectMode && (
+        <>
+          <button onClick={(e) => { e.stopPropagation(); onFavorite(); }}
+            className={`absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition-all ${image.isFavorite ? "bg-red-500 text-white" : "bg-black/30 text-white/80"}`}>
+            <Heart className="w-3.5 h-3.5" fill={image.isFavorite ? "white" : "none"} />
           </button>
-        )}
-        {canDelete && (
-          <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            className="w-6 h-6 rounded-full bg-black/40 flex items-center justify-center">
-            <Trash2 className="w-3 h-3 text-white" />
-          </button>
-        )}
-      </div>
+          {image.comment && (
+            <div className="absolute bottom-2 left-2">
+              <MessageSquare className="w-3.5 h-3.5 text-brand-yellow" />
+            </div>
+          )}
+          <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {canSetCover && !isCover && (
+              <button onClick={(e) => { e.stopPropagation(); onSetCover(); }}
+                className="w-6 h-6 rounded-full bg-brand-yellow/90 flex items-center justify-center">
+                <ImageIcon className="w-3 h-3 text-brand-black" />
+              </button>
+            )}
+            {canDelete && (
+              <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                className="w-6 h-6 rounded-full bg-black/40 flex items-center justify-center">
+                <Trash2 className="w-3 h-3 text-white" />
+              </button>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 // ── Sub-folder element row ─────────────────────────────────
 
-function ElementRow({ folder, images, onUpload, onDelete, onImageClick, onFavorite, onDeleteImage, onSetCover,
-  canManage, canDeleteFolder, canSetCover, coverImageUrl, lightboxImages, getCanDeleteImage }: {
+function ElementRow({ folder, images, onUpload, onDelete, onRename, onImageClick, onFavorite, onDeleteImage, onSetCover,
+  canDeleteFolder, canSetCover, coverImageUrl, lightboxImages, getCanDeleteImage,
+  selectMode, selectedIds, onToggleSelect }: {
   folder: ProjectSubFolder;
   images: ProjectImage[];
   onUpload: () => void;
   onDelete: () => void;
+  onRename: (newName: string) => void;
   onImageClick: (img: ProjectImage, allImages: ProjectImage[]) => void;
   onFavorite: (img: ProjectImage) => void;
   onDeleteImage: (img: ProjectImage) => void;
   onSetCover: (img: ProjectImage) => void;
-  canManage: boolean;
   canDeleteFolder: boolean;
   canSetCover: boolean;
   coverImageUrl?: string;
   lightboxImages: ProjectImage[];
   getCanDeleteImage: (img: ProjectImage) => boolean;
+  selectMode: boolean;
+  selectedIds: Set<string>;
+  onToggleSelect: (img: ProjectImage) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState(folder.name);
+
+  const handleRenameSubmit = () => {
+    if (editName.trim() && editName.trim() !== folder.name) {
+      onRename(editName.trim());
+    }
+    setEditing(false);
+  };
+
   return (
     <div className="border border-brand-gray-100 rounded-2xl overflow-hidden bg-white">
-      <button onClick={() => setOpen(!open)}
+      <button onClick={() => !editing && setOpen(!open)}
         className="w-full flex items-center justify-between px-4 py-3 active:bg-brand-gray-50">
-        <div className="flex items-center gap-3">
-          {open ? <FolderOpen className="w-5 h-5 text-brand-yellow" /> : <Folder className="w-5 h-5 text-brand-gray-400" />}
-          <span className="font-semibold text-brand-black text-sm">{folder.name}</span>
-          <span className="text-xs text-brand-gray-400 bg-brand-gray-100 px-2 py-0.5 rounded-full">{images.length}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {canManage && (
-            <button onClick={(e) => { e.stopPropagation(); onUpload(); }}
-              className="w-7 h-7 rounded-xl bg-brand-yellow flex items-center justify-center">
-              <Upload className="w-3.5 h-3.5 text-brand-black" />
-            </button>
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          {open ? <FolderOpen className="w-5 h-5 text-brand-yellow flex-shrink-0" /> : <Folder className="w-5 h-5 text-brand-gray-400 flex-shrink-0" />}
+          {editing ? (
+            <input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onBlur={handleRenameSubmit}
+              onKeyDown={(e) => { if (e.key === "Enter") handleRenameSubmit(); if (e.key === "Escape") { setEditName(folder.name); setEditing(false); } }}
+              onClick={(e) => e.stopPropagation()}
+              autoFocus
+              className="flex-1 bg-brand-gray-50 text-brand-black text-sm font-semibold px-2 py-1 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-yellow min-w-0"
+            />
+          ) : (
+            <span className="font-semibold text-brand-black text-sm truncate">{folder.name}</span>
           )}
+          <span className="text-xs text-brand-gray-400 bg-brand-gray-100 px-2 py-0.5 rounded-full flex-shrink-0">{images.length}</span>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+          <button onClick={(e) => { e.stopPropagation(); onUpload(); }}
+            className="w-7 h-7 rounded-xl bg-brand-yellow flex items-center justify-center">
+            <Upload className="w-3.5 h-3.5 text-brand-black" />
+          </button>
           {canDeleteFolder && (
-            <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
-              className="w-7 h-7 rounded-xl bg-brand-gray-100 flex items-center justify-center">
-              <Trash2 className="w-3 h-3 text-brand-gray-400" />
-            </button>
+            <>
+              <button onClick={(e) => { e.stopPropagation(); setEditName(folder.name); setEditing(true); setOpen(true); }}
+                className="w-7 h-7 rounded-xl bg-brand-gray-100 flex items-center justify-center">
+                <Pencil className="w-3 h-3 text-brand-gray-500" />
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                className="w-7 h-7 rounded-xl bg-brand-gray-100 flex items-center justify-center">
+                <Trash2 className="w-3 h-3 text-brand-gray-400" />
+              </button>
+            </>
           )}
           {open ? <ChevronDown className="w-4 h-4 text-brand-gray-400" /> : <ChevronRight className="w-4 h-4 text-brand-gray-400" />}
         </div>
@@ -202,7 +251,7 @@ function ElementRow({ folder, images, onUpload, onDelete, onImageClick, onFavori
           {images.length === 0 ? (
             <div className="flex flex-col items-center py-6 gap-2">
               <p className="text-xs text-brand-gray-300">Noch keine Fotos</p>
-              {canManage && <button onClick={onUpload} className="text-xs text-brand-yellow font-semibold">+ Fotos hochladen</button>}
+              <button onClick={onUpload} className="text-xs text-brand-yellow font-semibold">+ Fotos hochladen</button>
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2 mt-1">
@@ -213,7 +262,8 @@ function ElementRow({ folder, images, onUpload, onDelete, onImageClick, onFavori
                   onDelete={() => onDeleteImage(img)}
                   onSetCover={() => onSetCover(img)}
                   canDelete={getCanDeleteImage(img)} canSetCover={canSetCover}
-                  isCover={coverImageUrl === img.url} />
+                  isCover={coverImageUrl === img.url}
+                  selectMode={selectMode} selected={selectedIds.has(img.id)} onToggleSelect={() => onToggleSelect(img)} />
               ))}
             </div>
           )}
@@ -246,6 +296,9 @@ export default function ProjectDetailPage() {
   const [showAddElement, setShowAddElement] = useState<SubFolderType | null>(null);
   const [newElementName, setNewElementName] = useState("");
   const [uploadSelection, setUploadSelection] = useState<string>("");
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [downloading, setDownloading] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -332,6 +385,52 @@ export default function ProjectDetailPage() {
     }
   };
 
+  const handleRenameFolder = async (folder: ProjectSubFolder, newName: string) => {
+    try {
+      await renameProjectSubFolder(folder.id, newName);
+      setSubFolders((prev) => prev.map((f) => f.id === folder.id ? { ...f, name: newName } : f));
+      toast("Ordner umbenannt", "success");
+    } catch (e) {
+      console.error(e);
+      toast("Fehler beim Umbenennen", "error");
+    }
+  };
+
+  const handleToggleSelect = (img: ProjectImage) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(img.id)) next.delete(img.id); else next.add(img.id);
+      return next;
+    });
+  };
+
+  const handleBulkDownload = async () => {
+    const selected = images.filter((i) => selectedIds.has(i.id));
+    if (selected.length === 0) return;
+    setDownloading(true);
+    try {
+      for (const img of selected) {
+        const response = await fetch(img.url);
+        const blob = await response.blob();
+        const ext = blob.type.includes("png") ? "png" : blob.type.includes("webp") ? "webp" : "jpg";
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${img.id}.${ext}`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      toast(`${selected.length} Fotos heruntergeladen`, "success");
+      setSelectMode(false);
+      setSelectedIds(new Set());
+    } catch (e) {
+      console.error(e);
+      toast("Fehler beim Herunterladen", "error");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const handleCreateLink = async () => {
     if (!user || !project) return;
     setCreatingLink(true);
@@ -369,7 +468,6 @@ export default function ProjectDetailPage() {
   const canShare = isManager;
   const canDeleteFolder = isManager;
   const canSetCover = isManager;
-  const canManage = isManager;
   const canCreateElement = !!user;
 
   const produktionFolders = subFolders.filter((f) => f.type === "Produktion");
@@ -452,13 +550,32 @@ export default function ProjectDetailPage() {
 
         {/* Actions */}
         <div className="flex gap-2">
-          {canUpload && (
+          {canUpload && !selectMode && (
             <Button variant="primary" size="sm" className="flex-1" onClick={() => { setUploadSelection(""); setShowUpload(true); }}>
               <Upload className="w-4 h-4" />
               Fotos hochladen
             </Button>
           )}
-          {canShare && (
+          {!selectMode && (
+            <Button variant="ghost" size="sm" onClick={() => { setSelectMode(true); setSelectedIds(new Set()); }}>
+              <CheckSquare className="w-4 h-4" />
+              Auswählen
+            </Button>
+          )}
+          {selectMode && (
+            <>
+              <Button variant="ghost" size="sm" onClick={() => {
+                if (selectedIds.size === images.length) setSelectedIds(new Set());
+                else setSelectedIds(new Set(images.map((i) => i.id)));
+              }}>
+                {selectedIds.size === images.length ? "Alle abwählen" : "Alle wählen"}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => { setSelectMode(false); setSelectedIds(new Set()); }}>
+                <X className="w-4 h-4" /> Abbrechen
+              </Button>
+            </>
+          )}
+          {canShare && !selectMode && (
             <Button variant="ghost" size="sm" onClick={() => setShowShare(true)}>
               <Share2 className="w-4 h-4" />
               Teilen
@@ -502,7 +619,8 @@ export default function ProjectDetailPage() {
                   onDelete={() => handleDelete(img)}
                   onSetCover={() => handleSetCover(img)}
                   canDelete={getCanDeleteImage(img)} canSetCover={canSetCover}
-                  isCover={project.coverImageUrl === img.url} />
+                  isCover={project.coverImageUrl === img.url}
+                  selectMode={selectMode} selected={selectedIds.has(img.id)} onToggleSelect={() => handleToggleSelect(img)} />
               ))}
             </div>
           )}
@@ -519,12 +637,14 @@ export default function ProjectDetailPage() {
                 lightboxImages={images.filter((i) => i.subFolderId === folder.id)}
                 onUpload={() => { setUploadSelection(folder.id); setShowUpload(true); }}
                 onDelete={() => handleDeleteFolder(folder)}
+                onRename={(name) => handleRenameFolder(folder, name)}
                 onImageClick={openLightbox}
                 onFavorite={handleFavorite}
                 onDeleteImage={handleDelete}
                 onSetCover={handleSetCover}
-                canManage={canManage} canDeleteFolder={canDeleteFolder} canSetCover={canSetCover} getCanDeleteImage={getCanDeleteImage}
-                coverImageUrl={project.coverImageUrl} />
+                canDeleteFolder={canDeleteFolder} canSetCover={canSetCover} getCanDeleteImage={getCanDeleteImage}
+                coverImageUrl={project.coverImageUrl}
+                selectMode={selectMode} selectedIds={selectedIds} onToggleSelect={handleToggleSelect} />
             ))
           )}
         </div>
@@ -549,7 +669,8 @@ export default function ProjectDetailPage() {
                   onDelete={() => handleDelete(img)}
                   onSetCover={() => handleSetCover(img)}
                   canDelete={getCanDeleteImage(img)} canSetCover={canSetCover}
-                  isCover={project.coverImageUrl === img.url} />
+                  isCover={project.coverImageUrl === img.url}
+                  selectMode={selectMode} selected={selectedIds.has(img.id)} onToggleSelect={() => handleToggleSelect(img)} />
               ))}
             </div>
           )}
@@ -566,12 +687,14 @@ export default function ProjectDetailPage() {
                 lightboxImages={images.filter((i) => i.subFolderId === folder.id)}
                 onUpload={() => { setUploadSelection(folder.id); setShowUpload(true); }}
                 onDelete={() => handleDeleteFolder(folder)}
+                onRename={(name) => handleRenameFolder(folder, name)}
                 onImageClick={openLightbox}
                 onFavorite={handleFavorite}
                 onDeleteImage={handleDelete}
                 onSetCover={handleSetCover}
-                canManage={canManage} canDeleteFolder={canDeleteFolder} canSetCover={canSetCover} getCanDeleteImage={getCanDeleteImage}
-                coverImageUrl={project.coverImageUrl} />
+                canDeleteFolder={canDeleteFolder} canSetCover={canSetCover} getCanDeleteImage={getCanDeleteImage}
+                coverImageUrl={project.coverImageUrl}
+                selectMode={selectMode} selectedIds={selectedIds} onToggleSelect={handleToggleSelect} />
             ))
           )}
         </div>
@@ -588,7 +711,8 @@ export default function ProjectDetailPage() {
                   onDelete={() => handleDelete(img)}
                   onSetCover={() => handleSetCover(img)}
                   canDelete={getCanDeleteImage(img)} canSetCover={canSetCover}
-                  isCover={project.coverImageUrl === img.url} />
+                  isCover={project.coverImageUrl === img.url}
+                  selectMode={selectMode} selected={selectedIds.has(img.id)} onToggleSelect={() => handleToggleSelect(img)} />
               ))}
             </div>
           </div>
@@ -650,6 +774,19 @@ export default function ProjectDetailPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Bulk download bar */}
+      {selectMode && selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
+          <button
+            onClick={handleBulkDownload}
+            disabled={downloading}
+            className="flex items-center gap-2 bg-brand-black text-white font-bold text-sm px-6 py-3.5 rounded-2xl shadow-xl active:scale-95 transition-transform disabled:opacity-60">
+            <Download className="w-4 h-4" />
+            {downloading ? "Wird heruntergeladen…" : `${selectedIds.size} Foto${selectedIds.size !== 1 ? "s" : ""} herunterladen`}
+          </button>
+        </div>
+      )}
 
       {/* Share Modal */}
       <Modal open={showShare} onClose={() => setShowShare(false)} title="Projekt teilen">
