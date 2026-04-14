@@ -18,9 +18,9 @@ import {
   deleteImage, createUploadLink, getProjectUploadLinks,
   deactivateUploadLink, setCoverImage, updateImageComment,
   getProjectSubFolders, createProjectSubFolder, deleteProjectSubFolder,
-  renameProjectSubFolder, updateProject, deleteProject
+  renameProjectSubFolder, updateProject, deleteProject, getUsers
 } from "@/lib/db";
-import { Project, ProjectImage, UploadLink, ProjectSubFolder, SubFolderType } from "@/types";
+import { Project, ProjectImage, UploadLink, ProjectSubFolder, SubFolderType, AppUser } from "@/types";
 import { formatDate } from "@/lib/utils";
 
 // ── Lightbox ───────────────────────────────────────────────
@@ -286,6 +286,7 @@ export default function ProjectDetailPage() {
   const [images, setImages] = useState<ProjectImage[]>([]);
   const [subFolders, setSubFolders] = useState<ProjectSubFolder[]>([]);
   const [links, setLinks] = useState<UploadLink[]>([]);
+  const [allUsers, setAllUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
   const [showShare, setShowShare] = useState(false);
@@ -302,18 +303,19 @@ export default function ProjectDetailPage() {
 
   const load = useCallback(async () => {
     try {
-      const [p, imgs, folders, lnks] = await Promise.all([
+      const isManagerRole = user?.role === "admin" || user?.role === "projektleiter";
+      const [p, imgs, folders, lnks, usrs] = await Promise.all([
         getProject(projectId),
         getProjectImages(projectId).catch(() => []),
         getProjectSubFolders(projectId).catch(() => []),
-        (user?.role === "admin" || user?.role === "projektleiter")
-          ? getProjectUploadLinks(projectId).catch(() => [])
-          : Promise.resolve([]),
+        isManagerRole ? getProjectUploadLinks(projectId).catch(() => []) : Promise.resolve([]),
+        isManagerRole ? getUsers().catch(() => []) : Promise.resolve([]),
       ]);
       setProject(p);
       setImages(imgs as ProjectImage[]);
       setSubFolders(folders as ProjectSubFolder[]);
       setLinks(lnks as UploadLink[]);
+      setAllUsers(usrs as AppUser[]);
     } catch (e) {
       console.error(e);
       toast("Fehler beim Laden", "error");
@@ -355,7 +357,7 @@ export default function ProjectDetailPage() {
 
   const [savingElement, setSavingElement] = useState(false);
   const [showEditProject, setShowEditProject] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", projectNumber: "", location: "" });
+  const [editForm, setEditForm] = useState({ name: "", projectNumber: "", location: "", projectLeaderId: "", projectLeaderName: "" });
   const [savingProject, setSavingProject] = useState(false);
 
   const handleAddElement = async (type: SubFolderType) => {
@@ -436,7 +438,13 @@ export default function ProjectDetailPage() {
 
   const handleOpenEditProject = () => {
     if (!project) return;
-    setEditForm({ name: project.name, projectNumber: project.projectNumber || "", location: project.location || "" });
+    setEditForm({
+      name: project.name,
+      projectNumber: project.projectNumber || "",
+      location: project.location || "",
+      projectLeaderId: project.projectLeaderId || "",
+      projectLeaderName: project.projectLeaderName || "",
+    });
     setShowEditProject(true);
   };
 
@@ -448,6 +456,8 @@ export default function ProjectDetailPage() {
         name: editForm.name.trim(),
         projectNumber: editForm.projectNumber.trim() || undefined,
         location: editForm.location.trim() || undefined,
+        projectLeaderId: editForm.projectLeaderId || undefined,
+        projectLeaderName: editForm.projectLeaderName || undefined,
       });
       setProject((prev) => prev ? { ...prev, ...editForm } : prev);
       setShowEditProject(false);
@@ -867,6 +877,25 @@ export default function ProjectDetailPage() {
               onChange={(e) => setEditForm((f) => ({ ...f, location: e.target.value }))}
               placeholder="z.B. Zürich"
               className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-brand-gray-600">Projektleiter</label>
+            <select
+              value={editForm.projectLeaderId}
+              onChange={(e) => {
+                const selected = allUsers.find((u) => u.uid === e.target.value);
+                setEditForm((f) => ({
+                  ...f,
+                  projectLeaderId: e.target.value,
+                  projectLeaderName: selected?.displayName || "",
+                }));
+              }}
+              className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow">
+              <option value="">Kein Projektleiter</option>
+              {allUsers.map((u) => (
+                <option key={u.uid} value={u.uid}>{u.displayName}</option>
+              ))}
+            </select>
           </div>
           <div className="flex gap-3">
             <Button variant="ghost" className="flex-1" onClick={() => setShowEditProject(false)}>Abbrechen</Button>

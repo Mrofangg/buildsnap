@@ -96,6 +96,7 @@ export async function getProject(id: string): Promise<Project | null> {
 
 export async function updateProject(id: string, data: {
   name?: string; projectNumber?: string; location?: string; description?: string;
+  projectLeaderId?: string; projectLeaderName?: string;
 }): Promise<void> {
   await updateDoc(doc(db, "projects", id), data);
 }

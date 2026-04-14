@@ -209,8 +209,8 @@ export default function ProjectsPage() {
 
         {/* Filter + Sort row */}
         <div className="flex gap-2 mb-4">
-          {/* Projektleiter filter */}
-          {leaders.length > 0 && (
+          {/* Projektleiter filter — show for managers (users loaded) or if projects have leaders */}
+          {(users.length > 0 || leaders.length > 0) && (
             <div className="relative flex-1">
               <select
                 value={filterLeader}
@@ -218,8 +218,8 @@ export default function ProjectsPage() {
                 className="w-full appearance-none pl-3 pr-7 py-2.5 bg-white rounded-2xl text-sm border border-brand-gray-100 focus:outline-none focus:border-brand-yellow shadow-card text-brand-gray-500 font-medium"
               >
                 <option value="">Alle Leiter</option>
-                {leaders.map(([id, name]) => (
-                  <option key={id} value={id}>{name}</option>
+                {(users.length > 0 ? users : leaders.map(([id, name]) => ({ uid: id, displayName: name }))).map((u) => (
+                  <option key={u.uid} value={u.uid}>{u.displayName}</option>
                 ))}
               </select>
               <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-brand-gray-400 pointer-events-none" />
@@ -311,11 +311,9 @@ export default function ProjectsPage() {
                 className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow"
               >
                 <option value="">Kein Projektleiter</option>
-                {users
-                  .filter((u) => u.role === "employee" || u.role === "admin")
-                  .map((u) => (
-                    <option key={u.uid} value={u.uid}>{u.displayName}</option>
-                  ))}
+                {users.map((u) => (
+                  <option key={u.uid} value={u.uid}>{u.displayName}</option>
+                ))}
               </select>
             </div>
           )}
