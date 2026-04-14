@@ -1,15 +1,14 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Plus, FolderOpen, Image as ImageIcon, Search, X, ChevronDown } from "lucide-react";
+import { Plus, FolderOpen, Image as ImageIcon, Search, X, ChevronDown, ArrowUpDown } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/layout/app-shell";
-import { Button, Modal, Input, Select, Badge } from "@/components/ui";
+import { Button, Modal, Input } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 import { getProjects, createProject, getUsers } from "@/lib/db";
-import { Project, AppUser, PROJECT_PHASES } from "@/types";
+import { Project, AppUser } from "@/types";
 import { formatDateShort } from "@/lib/utils";
 
 function ProjectCard({ project }: { project: Project }) {
@@ -29,22 +28,29 @@ function ProjectCard({ project }: { project: Project }) {
               <span className="text-xs text-brand-gray-300 font-medium">Noch keine Fotos</span>
             </div>
           )}
-          {!project.coverImageUrl && (
-            <div className="absolute inset-0 bg-gradient-to-br from-brand-yellow/10 to-transparent" />
-          )}
-          {project.phase && (
+          {project.projectNumber && (
             <div className="absolute top-3 left-3">
-              <Badge variant="yellow">{project.phase}</Badge>
+              <span className="bg-brand-black/70 text-white text-xs font-bold px-2 py-1 rounded-lg">
+                #{project.projectNumber}
+              </span>
             </div>
           )}
         </div>
         <div className="p-4 flex items-center justify-between gap-2">
           <div className="min-w-0">
             <h3 className="font-bold text-brand-black truncate text-base">{project.name}</h3>
-            <div className="flex items-center gap-2 mt-0.5">
-              <p className="text-xs text-brand-gray-400">{formatDateShort(project.createdAt)}</p>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              {project.location && (
+                <p className="text-xs text-brand-gray-400">{project.location}</p>
+              )}
+              {project.location && project.projectLeaderName && (
+                <span className="text-xs text-brand-gray-300">·</span>
+              )}
               {project.projectLeaderName && (
-                <p className="text-xs text-brand-gray-400">· {project.projectLeaderName}</p>
+                <p className="text-xs text-brand-gray-400">{project.projectLeaderName}</p>
+              )}
+              {!project.location && !project.projectLeaderName && (
+                <p className="text-xs text-brand-gray-400">{formatDateShort(project.createdAt)}</p>
               )}
             </div>
           </div>
@@ -73,6 +79,8 @@ function SkeletonCard() {
   );
 }
 
+type SortMode = "name" | "number";
+
 export default function ProjectsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -81,10 +89,10 @@ export default function ProjectsPage() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ name: "", phase: "", description: "", projectLeaderId: "", projectLeaderName: "" });
+  const [form, setForm] = useState({ projectNumber: "", name: "", location: "", description: "", projectLeaderId: "", projectLeaderName: "" });
   const [search, setSearch] = useState("");
-  const [filterPhase, setFilterPhase] = useState("");
   const [filterLeader, setFilterLeader] = useState("");
+  const [sortMode, setSortMode] = useState<SortMode>("number");
 
   const load = async () => {
     try {
@@ -103,14 +111,36 @@ export default function ProjectsPage() {
 
   useEffect(() => { load(); }, [user]);
 
-  const filtered = useMemo(() => {
-    return projects.filter((p) => {
-      const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase());
-      const matchPhase = !filterPhase || p.phase === filterPhase;
-      const matchLeader = !filterLeader || p.projectLeaderId === filterLeader;
-      return matchSearch && matchPhase && matchLeader;
+  const leaders = useMemo(() => {
+    const map = new Map<string, string>();
+    projects.forEach((p) => {
+      if (p.projectLeaderId && p.projectLeaderName) {
+        map.set(p.projectLeaderId, p.projectLeaderName);
+      }
     });
-  }, [projects, search, filterPhase, filterLeader]);
+    return Array.from(map.entries()) as [string, string][];
+  }, [projects]);
+
+  const filtered = useMemo(() => {
+    let list = projects.filter((p) => {
+      const matchSearch = !search ||
+        p.name.toLowerCase().includes(search.toLowerCase()) ||
+        (p.projectNumber && p.projectNumber.toLowerCase().includes(search.toLowerCase()));
+      const matchLeader = !filterLeader || p.projectLeaderId === filterLeader;
+      return matchSearch && matchLeader;
+    });
+
+    list = [...list].sort((a, b) => {
+      if (sortMode === "number") {
+        const na = a.projectNumber || "";
+        const nb = b.projectNumber || "";
+        return na.localeCompare(nb, undefined, { numeric: true });
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    return list;
+  }, [projects, search, filterLeader, sortMode]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,8 +148,9 @@ export default function ProjectsPage() {
     setCreating(true);
     try {
       await createProject({
+        projectNumber: form.projectNumber || undefined,
         name: form.name.trim(),
-        phase: form.phase || undefined,
+        location: form.location || undefined,
         description: form.description || undefined,
         userId: user.uid,
         userName: user.displayName,
@@ -127,7 +158,7 @@ export default function ProjectsPage() {
         projectLeaderName: form.projectLeaderName || undefined,
       });
       toast("Projekt erstellt!", "success");
-      setForm({ name: "", phase: "", description: "", projectLeaderId: "", projectLeaderName: "" });
+      setForm({ projectNumber: "", name: "", location: "", description: "", projectLeaderId: "", projectLeaderName: "" });
       setShowCreate(false);
       load();
     } catch {
@@ -138,14 +169,6 @@ export default function ProjectsPage() {
   };
 
   const canCreate = user?.role === "admin";
-  const phases = Array.from(new Set(projects.map((p) => p.phase).filter(Boolean))) as string[];
-  const leaders = Array.from(
-    new Map(
-      projects
-        .filter((p) => p.projectLeaderId && p.projectLeaderName)
-        .map((p) => [p.projectLeaderId, p.projectLeaderName])
-    ).entries()
-  ) as [string, string][];
 
   return (
     <AppShell>
@@ -167,56 +190,57 @@ export default function ProjectsPage() {
           )}
         </div>
 
-        {/* Search + Filters */}
-        <div className="flex flex-col gap-2 mb-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-gray-300" />
-            <input
-              type="text"
-              placeholder="Projekt suchen..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-8 py-2.5 bg-white rounded-2xl text-sm border border-brand-gray-100 focus:outline-none focus:border-brand-yellow shadow-card"
-            />
-            {search && (
-              <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2">
-                <X className="w-3.5 h-3.5 text-brand-gray-300" />
-              </button>
-            )}
-          </div>
-          {(phases.length > 0 || leaders.length > 0) && (
-            <div className="flex gap-2">
-              {phases.length > 0 && (
-                <div className="relative flex-1">
-                  <select
-                    value={filterPhase}
-                    onChange={(e) => setFilterPhase(e.target.value)}
-                    className="w-full appearance-none pl-3 pr-7 py-2.5 bg-white rounded-2xl text-sm border border-brand-gray-100 focus:outline-none focus:border-brand-yellow shadow-card text-brand-gray-500 font-medium"
-                  >
-                    <option value="">Alle Phasen</option>
-                    {phases.map((p) => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-brand-gray-400 pointer-events-none" />
-                </div>
-              )}
-              {leaders.length > 0 && (
-                <div className="relative flex-1">
-                  <select
-                    value={filterLeader}
-                    onChange={(e) => setFilterLeader(e.target.value)}
-                    className="w-full appearance-none pl-3 pr-7 py-2.5 bg-white rounded-2xl text-sm border border-brand-gray-100 focus:outline-none focus:border-brand-yellow shadow-card text-brand-gray-500 font-medium"
-                  >
-                    <option value="">Alle Leiter</option>
-                    {leaders.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-                  </select>
-                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-brand-gray-400 pointer-events-none" />
-                </div>
-              )}
-            </div>
+        {/* Search */}
+        <div className="relative mb-2">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-gray-300" />
+          <input
+            type="text"
+            placeholder="Name oder Projektnummer suchen..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-8 py-2.5 bg-white rounded-2xl text-sm border border-brand-gray-100 focus:outline-none focus:border-brand-yellow shadow-card"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2">
+              <X className="w-3.5 h-3.5 text-brand-gray-300" />
+            </button>
           )}
         </div>
 
-        {/* Grid */}
+        {/* Filter + Sort row */}
+        <div className="flex gap-2 mb-4">
+          {/* Projektleiter filter */}
+          {leaders.length > 0 && (
+            <div className="relative flex-1">
+              <select
+                value={filterLeader}
+                onChange={(e) => setFilterLeader(e.target.value)}
+                className="w-full appearance-none pl-3 pr-7 py-2.5 bg-white rounded-2xl text-sm border border-brand-gray-100 focus:outline-none focus:border-brand-yellow shadow-card text-brand-gray-500 font-medium"
+              >
+                <option value="">Alle Leiter</option>
+                {leaders.map(([id, name]) => (
+                  <option key={id} value={id}>{name}</option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-brand-gray-400 pointer-events-none" />
+            </div>
+          )}
+
+          {/* Sort */}
+          <div className="relative">
+            <select
+              value={sortMode}
+              onChange={(e) => setSortMode(e.target.value as SortMode)}
+              className="appearance-none pl-3 pr-7 py-2.5 bg-white rounded-2xl text-sm border border-brand-gray-100 focus:outline-none focus:border-brand-yellow shadow-card text-brand-gray-500 font-medium"
+            >
+              <option value="number">Nr.</option>
+              <option value="name">A–Z</option>
+            </select>
+            <ArrowUpDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-brand-gray-400 pointer-events-none" />
+          </div>
+        </div>
+
+        {/* List */}
         {loading ? (
           <div className="flex flex-col gap-4">
             {[1, 2, 3].map((i) => <SkeletonCard key={i} />)}
@@ -228,13 +252,13 @@ export default function ProjectsPage() {
             </div>
             <div className="text-center">
               <p className="font-bold text-brand-gray-500">
-                {search || filterPhase ? "Keine Treffer" : "Keine Projekte"}
+                {search || filterLeader ? "Keine Treffer" : "Keine Projekte"}
               </p>
               <p className="text-sm text-brand-gray-300 mt-1">
-                {search || filterPhase ? "Filter anpassen" : canCreate ? "Erstelle dein erstes Projekt" : "Noch keine Projekte vorhanden"}
+                {canCreate && !search && !filterLeader ? "Erstelle dein erstes Projekt" : "Filter anpassen"}
               </p>
             </div>
-            {canCreate && !search && !filterPhase && (
+            {canCreate && !search && !filterLeader && (
               <Button variant="primary" onClick={() => setShowCreate(true)}>
                 <Plus className="w-4 h-4" />
                 Projekt erstellen
@@ -252,19 +276,24 @@ export default function ProjectsPage() {
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Neues Projekt">
         <form onSubmit={handleCreate} className="flex flex-col gap-4">
           <Input
+            label="Projektnummer"
+            placeholder="z.B. 2026-01"
+            value={form.projectNumber}
+            onChange={(e) => setForm({ ...form, projectNumber: e.target.value })}
+            autoFocus
+          />
+          <Input
             label="Projektname *"
-            placeholder="z.B. 2026-01 Reusszopf Luzern"
+            placeholder="z.B. Reusszopf Luzern"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             required
-            autoFocus
           />
-          <Select
-            label="Bauphase (optional)"
-            placeholder="Bauphase wählen..."
-            value={form.phase}
-            onChange={(e) => setForm({ ...form, phase: e.target.value })}
-            options={PROJECT_PHASES.map((p) => ({ value: p, label: p }))}
+          <Input
+            label="Ort"
+            placeholder="z.B. Luzern"
+            value={form.location}
+            onChange={(e) => setForm({ ...form, location: e.target.value })}
           />
           {users.length > 0 && (
             <div className="flex flex-col gap-1.5">
@@ -279,7 +308,7 @@ export default function ProjectsPage() {
                     projectLeaderName: selected?.displayName || "",
                   });
                 }}
-                className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow border-none"
+                className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow"
               >
                 <option value="">Kein Projektleiter</option>
                 {users
@@ -290,12 +319,6 @@ export default function ProjectsPage() {
               </select>
             </div>
           )}
-          <Input
-            label="Beschreibung (optional)"
-            placeholder="Kurze Projektbeschreibung..."
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-          />
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="ghost" className="flex-1" onClick={() => setShowCreate(false)}>
               Abbrechen

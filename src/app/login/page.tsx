@@ -57,14 +57,8 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      <div className="bg-brand-black px-6 pt-16 pb-12 flex flex-col gap-4">
-        <div className="flex items-center gap-3">
-          <img src="/fanger-logo.png" alt="Fanger" className="w-12 h-12 rounded-2xl object-cover shadow-float" />
-          <div>
-            <h1 className="text-3xl font-black text-white tracking-tight">BuildSnap</h1>
-            <p className="text-white/50 font-medium text-sm">Fanger Elementtechnik AG</p>
-          </div>
-        </div>
+      <div className="bg-brand-black px-6 pt-16 pb-12 flex flex-col items-center justify-center">
+        <img src="/fanger-logo.png" alt="Fanger" className="w-32 h-32 object-contain" />
       </div>
 
       <div className="flex-1 px-6 pt-8 pb-10 max-w-md w-full mx-auto">

@@ -1,24 +1,27 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import {
   FileText, Image as ImageIcon, Upload, Download, Trash2,
-  Search, X, Plus, ChevronDown, File,
+  Plus, File, Folder, ArrowLeft, FolderPlus, X,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/layout/app-shell";
-import { Button, Modal, Input, Badge } from "@/components/ui";
+import { Button, Modal, Input } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
-import { getMarketingAssets, uploadMarketingAsset, deleteMarketingAsset } from "@/lib/db";
-import { MarketingAsset, MARKETING_CATEGORIES } from "@/types";
+import {
+  getMarketingCategories, createMarketingCategory, deleteMarketingCategory,
+  getMarketingAssets, uploadMarketingAsset, deleteMarketingAsset,
+} from "@/lib/db";
+import { MarketingCategory, MarketingAsset } from "@/types";
 import { formatDateShort } from "@/lib/utils";
 
 function fileIcon(type: string) {
-  if (type.startsWith("image/")) return <ImageIcon className="w-6 h-6 text-brand-yellow" />;
-  if (type === "application/pdf") return <FileText className="w-6 h-6 text-red-400" />;
+  if (type.startsWith("image/")) return <ImageIcon className="w-8 h-8 text-brand-yellow" />;
+  if (type === "application/pdf") return <FileText className="w-8 h-8 text-red-400" />;
   if (type.includes("presentation") || type.includes("powerpoint"))
-    return <File className="w-6 h-6 text-orange-400" />;
-  return <File className="w-6 h-6 text-brand-gray-400" />;
+    return <File className="w-8 h-8 text-orange-400" />;
+  return <File className="w-8 h-8 text-brand-gray-400" />;
 }
 
 function formatSize(bytes?: number) {
@@ -26,6 +29,47 @@ function formatSize(bytes?: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+// ── Category Folder View ───────────────────────────────────
+
+function CategoryFolderCard({ category, count, canDelete, onDelete, onClick }: {
+  category: MarketingCategory;
+  count: number;
+  canDelete: boolean;
+  onDelete: () => void;
+  onClick: () => void;
+}) {
+  return (
+    <div
+      onClick={onClick}
+      className="bg-white rounded-3xl p-5 shadow-card active:scale-[0.98] transition-all cursor-pointer"
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 bg-brand-yellow/10 rounded-2xl flex items-center justify-center flex-shrink-0">
+            <Folder className="w-6 h-6 text-brand-yellow" />
+          </div>
+          <div>
+            <h3 className="font-bold text-brand-black text-base">{category.name}</h3>
+            <p className="text-xs text-brand-gray-400 mt-0.5">
+              {count} Dokument{count !== 1 ? "e" : ""}
+            </p>
+          </div>
+        </div>
+        {canDelete && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="w-8 h-8 rounded-xl bg-brand-gray-100 flex items-center justify-center"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-brand-gray-400" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Asset Card ─────────────────────────────────────────────
 
 function AssetCard({ asset, canDelete, onDelete }: {
   asset: MarketingAsset;
@@ -36,7 +80,6 @@ function AssetCard({ asset, canDelete, onDelete }: {
 
   return (
     <div className="bg-white rounded-3xl overflow-hidden shadow-card">
-      {/* Preview */}
       {isImage ? (
         <a href={asset.fileUrl} target="_blank" rel="noopener">
           <div className="aspect-[4/3] overflow-hidden bg-brand-gray-100">
@@ -54,30 +97,21 @@ function AssetCard({ asset, canDelete, onDelete }: {
           </div>
         </a>
       )}
-
-      {/* Info */}
       <div className="p-4">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <h3 className="font-bold text-brand-black text-sm leading-tight truncate">{asset.title}</h3>
+            <h3 className="font-bold text-brand-black text-sm leading-tight">{asset.title}</h3>
             {asset.description && (
               <p className="text-xs text-brand-gray-400 mt-0.5 line-clamp-2">{asset.description}</p>
             )}
-            <div className="flex items-center gap-2 mt-1.5">
-              <Badge variant="yellow">{asset.category}</Badge>
-              {asset.fileSize && (
-                <span className="text-[10px] text-brand-gray-300">{formatSize(asset.fileSize)}</span>
-              )}
-            </div>
-            <p className="text-[10px] text-brand-gray-300 mt-1">
+            <p className="text-[10px] text-brand-gray-300 mt-1.5">
               {formatDateShort(asset.uploadedAt)} · {asset.uploadedByName}
+              {asset.fileSize ? ` · ${formatSize(asset.fileSize)}` : ""}
             </p>
           </div>
           <div className="flex flex-col gap-1 flex-shrink-0">
             <a
-              href={asset.fileUrl}
-              target="_blank"
-              download
+              href={asset.fileUrl} target="_blank" download
               className="w-8 h-8 rounded-xl bg-brand-gray-100 flex items-center justify-center"
             >
               <Download className="w-3.5 h-3.5 text-brand-gray-500" />
@@ -97,26 +131,45 @@ function AssetCard({ asset, canDelete, onDelete }: {
   );
 }
 
+// ── Main Page ──────────────────────────────────────────────
+
 export default function MarketingPage() {
   const { user } = useAuth();
   const { toast } = useToast();
 
-  const [assets, setAssets] = useState<MarketingAsset[]>([]);
+  const [categories, setCategories] = useState<MarketingCategory[]>([]);
+  const [assetCounts, setAssetCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
-  const [showUpload, setShowUpload] = useState(false);
-  const [search, setSearch] = useState("");
-  const [filterCategory, setFilterCategory] = useState("");
 
-  // Upload form
+  // Folder navigation
+  const [openCategory, setOpenCategory] = useState<MarketingCategory | null>(null);
+  const [assets, setAssets] = useState<MarketingAsset[]>([]);
+  const [loadingAssets, setLoadingAssets] = useState(false);
+
+  // Modals
+  const [showNewCategory, setShowNewCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [creatingCategory, setCreatingCategory] = useState(false);
+
+  const [showUpload, setShowUpload] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [form, setForm] = useState<{ title: string; description: string; category: string }>({ title: "", description: "", category: MARKETING_CATEGORIES[0] });
+  const [uploadTitle, setUploadTitle] = useState("");
+  const [uploadDesc, setUploadDesc] = useState("");
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  const load = async () => {
+  const canManage = user?.role === "admin";
+
+  // Load categories + asset counts
+  const loadCategories = async () => {
     try {
-      const data = await getMarketingAssets();
-      setAssets(data);
+      const cats = await getMarketingCategories();
+      setCategories(cats);
+      // Load all assets once to count per category
+      const all = await getMarketingAssets();
+      const counts: Record<string, number> = {};
+      all.forEach((a) => { counts[a.categoryId] = (counts[a.categoryId] || 0) + 1; });
+      setAssetCounts(counts);
     } catch {
       toast("Fehler beim Laden", "error");
     } finally {
@@ -124,26 +177,69 @@ export default function MarketingPage() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { loadCategories(); }, []);
 
-  const filtered = useMemo(() => {
-    return assets.filter((a) => {
-      const matchSearch = !search || a.title.toLowerCase().includes(search.toLowerCase());
-      const matchCat = !filterCategory || a.category === filterCategory;
-      return matchSearch && matchCat;
-    });
-  }, [assets, search, filterCategory]);
+  // Load assets for open category
+  const loadAssets = async (categoryId: string) => {
+    setLoadingAssets(true);
+    try {
+      const data = await getMarketingAssets(categoryId);
+      setAssets(data);
+    } catch {
+      toast("Fehler beim Laden", "error");
+    } finally {
+      setLoadingAssets(false);
+    }
+  };
 
+  const handleOpenCategory = (cat: MarketingCategory) => {
+    setOpenCategory(cat);
+    loadAssets(cat.id);
+  };
+
+  const handleBackToFolders = () => {
+    setOpenCategory(null);
+    setAssets([]);
+  };
+
+  // Create category
+  const handleCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName.trim() || !user) return;
+    setCreatingCategory(true);
+    try {
+      await createMarketingCategory(newCategoryName.trim(), user.uid);
+      toast("Kategorie erstellt!", "success");
+      setNewCategoryName("");
+      setShowNewCategory(false);
+      loadCategories();
+    } catch {
+      toast("Fehler beim Erstellen", "error");
+    } finally {
+      setCreatingCategory(false);
+    }
+  };
+
+  // Delete category
+  const handleDeleteCategory = async (cat: MarketingCategory) => {
+    if (!confirm(`Kategorie "${cat.name}" wirklich löschen?`)) return;
+    await deleteMarketingCategory(cat.id);
+    toast("Kategorie gelöscht", "info");
+    loadCategories();
+  };
+
+  // Upload asset
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!file || !form.title.trim() || !user) return;
+    if (!file || !uploadTitle.trim() || !user || !openCategory) return;
     setUploading(true);
     try {
       await uploadMarketingAsset({
         file,
-        title: form.title.trim(),
-        description: form.description || undefined,
-        category: form.category,
+        title: uploadTitle.trim(),
+        description: uploadDesc || undefined,
+        categoryId: openCategory.id,
+        categoryName: openCategory.name,
         userId: user.uid,
         userName: user.displayName,
         onProgress: setProgress,
@@ -151,9 +247,11 @@ export default function MarketingPage() {
       toast("Datei hochgeladen!", "success");
       setShowUpload(false);
       setFile(null);
-      setForm({ title: "", description: "", category: MARKETING_CATEGORIES[0] });
+      setUploadTitle("");
+      setUploadDesc("");
       setProgress(0);
-      load();
+      loadAssets(openCategory.id);
+      loadCategories();
     } catch {
       toast("Fehler beim Hochladen", "error");
     } finally {
@@ -161,102 +259,149 @@ export default function MarketingPage() {
     }
   };
 
-  const handleDelete = async (asset: MarketingAsset) => {
+  // Delete asset
+  const handleDeleteAsset = async (asset: MarketingAsset) => {
     if (!confirm(`"${asset.title}" wirklich löschen?`)) return;
     await deleteMarketingAsset(asset);
     setAssets((prev) => prev.filter((a) => a.id !== asset.id));
+    loadCategories(); // update counts
     toast("Gelöscht", "info");
   };
 
-  const canManage = user?.role === "admin";
-  const categories = Array.from(new Set(assets.map((a) => a.category)));
+  // ── Folder list view ───────────────────────────────────
+  if (!openCategory) {
+    return (
+      <AppShell>
+        <div className="px-4 py-5">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-2xl font-black text-brand-black tracking-tight">Marketing</h1>
+              <p className="text-sm text-brand-gray-400 mt-0.5">{categories.length} Kategorie{categories.length !== 1 ? "n" : ""}</p>
+            </div>
+            {canManage && (
+              <Button variant="primary" size="sm" onClick={() => setShowNewCategory(true)}>
+                <FolderPlus className="w-4 h-4" />
+                Neu
+              </Button>
+            )}
+          </div>
 
+          {loading ? (
+            <div className="flex flex-col gap-3">
+              {[1, 2, 3].map((i) => <div key={i} className="h-20 skeleton rounded-3xl" />)}
+            </div>
+          ) : categories.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
+              <div className="w-20 h-20 bg-brand-gray-100 rounded-3xl flex items-center justify-center">
+                <Folder className="w-10 h-10 text-brand-gray-300" />
+              </div>
+              <div className="text-center">
+                <p className="font-bold text-brand-gray-500">Keine Kategorien</p>
+                <p className="text-sm text-brand-gray-300 mt-1">
+                  {canManage ? "Erstelle deine erste Kategorie" : "Noch keine Inhalte vorhanden"}
+                </p>
+              </div>
+              {canManage && (
+                <Button variant="primary" onClick={() => setShowNewCategory(true)}>
+                  <FolderPlus className="w-4 h-4" />
+                  Kategorie erstellen
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {categories.map((cat) => (
+                <CategoryFolderCard
+                  key={cat.id}
+                  category={cat}
+                  count={assetCounts[cat.id] || 0}
+                  canDelete={canManage}
+                  onDelete={() => handleDeleteCategory(cat)}
+                  onClick={() => handleOpenCategory(cat)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* New Category Modal */}
+        <Modal open={showNewCategory} onClose={() => setShowNewCategory(false)} title="Neue Kategorie">
+          <form onSubmit={handleCreateCategory} className="flex flex-col gap-4">
+            <Input
+              label="Kategoriename *"
+              placeholder="z.B. Flyer, Inserate, Broschüren..."
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              autoFocus
+              required
+            />
+            <div className="flex gap-3 pt-2">
+              <Button type="button" variant="ghost" className="flex-1" onClick={() => setShowNewCategory(false)}>
+                Abbrechen
+              </Button>
+              <Button type="submit" variant="primary" className="flex-1" loading={creatingCategory} disabled={!newCategoryName.trim()}>
+                Erstellen
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      </AppShell>
+    );
+  }
+
+  // ── Folder content view ────────────────────────────────
   return (
     <AppShell>
-      <div className="px-4 py-5">
+      <div className="px-4 py-4">
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-2xl font-black text-brand-black tracking-tight">Marketing</h1>
-            <p className="text-sm text-brand-gray-400 mt-0.5">
-              {filtered.length} Dokument{filtered.length !== 1 ? "e" : ""}
-            </p>
+        <div className="flex items-center gap-3 mb-5">
+          <button
+            onClick={handleBackToFolders}
+            className="w-9 h-9 rounded-xl bg-brand-gray-100 flex items-center justify-center flex-shrink-0"
+          >
+            <ArrowLeft className="w-4 h-4 text-brand-black" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-black text-brand-black truncate">{openCategory.name}</h1>
+            <p className="text-xs text-brand-gray-400">{assets.length} Dokument{assets.length !== 1 ? "e" : ""}</p>
           </div>
           {canManage && (
             <Button variant="primary" size="sm" onClick={() => setShowUpload(true)}>
-              <Plus className="w-4 h-4" />
+              <Upload className="w-4 h-4" />
               Hochladen
             </Button>
           )}
         </div>
 
-        {/* Search + Filter */}
-        <div className="flex gap-2 mb-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-gray-300" />
-            <input
-              type="text"
-              placeholder="Suchen..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-8 py-2.5 bg-white rounded-2xl text-sm border border-brand-gray-100 focus:outline-none focus:border-brand-yellow shadow-card"
-            />
-            {search && (
-              <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2">
-                <X className="w-3.5 h-3.5 text-brand-gray-300" />
-              </button>
-            )}
-          </div>
-          {categories.length > 1 && (
-            <div className="relative">
-              <select
-                value={filterCategory}
-                onChange={(e) => setFilterCategory(e.target.value)}
-                className="appearance-none pl-3 pr-7 py-2.5 bg-white rounded-2xl text-sm border border-brand-gray-100 focus:outline-none focus:border-brand-yellow shadow-card text-brand-gray-500 font-medium"
-              >
-                <option value="">Alle</option>
-                {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-brand-gray-400 pointer-events-none" />
-            </div>
-          )}
-        </div>
-
-        {/* Content */}
-        {loading ? (
+        {/* Asset list */}
+        {loadingAssets ? (
           <div className="flex flex-col gap-4">
-            {[1, 2, 3].map((i) => <div key={i} className="h-64 skeleton rounded-3xl" />)}
+            {[1, 2].map((i) => <div key={i} className="h-64 skeleton rounded-3xl" />)}
           </div>
-        ) : filtered.length === 0 ? (
+        ) : assets.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
             <div className="w-20 h-20 bg-brand-gray-100 rounded-3xl flex items-center justify-center">
               <FileText className="w-10 h-10 text-brand-gray-300" />
             </div>
             <div className="text-center">
-              <p className="font-bold text-brand-gray-500">
-                {search || filterCategory ? "Keine Treffer" : "Noch keine Unterlagen"}
-              </p>
-              <p className="text-sm text-brand-gray-300 mt-1">
-                {canManage && !search && !filterCategory
-                  ? "Lade Inserate, Flyer oder Broschüren hoch"
-                  : "Bald verfügbar"}
-              </p>
+              <p className="font-bold text-brand-gray-500">Noch keine Dokumente</p>
+              {canManage && <p className="text-sm text-brand-gray-300 mt-1">Lade das erste Dokument hoch</p>}
             </div>
-            {canManage && !search && !filterCategory && (
+            {canManage && (
               <Button variant="primary" onClick={() => setShowUpload(true)}>
                 <Upload className="w-4 h-4" />
-                Erste Datei hochladen
+                Hochladen
               </Button>
             )}
           </div>
         ) : (
           <div className="flex flex-col gap-4">
-            {filtered.map((asset) => (
+            {assets.map((asset) => (
               <AssetCard
                 key={asset.id}
                 asset={asset}
                 canDelete={canManage}
-                onDelete={() => handleDelete(asset)}
+                onDelete={() => handleDeleteAsset(asset)}
               />
             ))}
           </div>
@@ -264,78 +409,65 @@ export default function MarketingPage() {
       </div>
 
       {/* Upload Modal */}
-      <Modal open={showUpload} onClose={() => setShowUpload(false)} title="Datei hochladen">
+      <Modal open={showUpload} onClose={() => setShowUpload(false)} title={`Hochladen in "${openCategory.name}"`}>
         <form onSubmit={handleUpload} className="flex flex-col gap-4">
           {/* File picker */}
-          <div>
-            <label className="text-sm font-semibold text-brand-gray-600 block mb-1.5">Datei *</label>
-            <label className={`flex flex-col items-center justify-center w-full h-28 rounded-2xl border-2 border-dashed cursor-pointer transition-colors ${
-              file ? "border-brand-yellow bg-brand-yellow/5" : "border-brand-gray-200 bg-brand-gray-50 hover:border-brand-yellow"
-            }`}>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-brand-gray-600">Datei *</label>
+            <label className="flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed border-brand-gray-200 rounded-2xl cursor-pointer hover:border-brand-yellow transition-colors">
+              {file ? (
+                <div className="flex items-center gap-2 w-full">
+                  <File className="w-5 h-5 text-brand-yellow flex-shrink-0" />
+                  <span className="text-sm text-brand-black truncate flex-1">{file.name}</span>
+                  <button type="button" onClick={(e) => { e.preventDefault(); setFile(null); }}>
+                    <X className="w-4 h-4 text-brand-gray-400" />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <Upload className="w-8 h-8 text-brand-gray-300" />
+                  <span className="text-sm text-brand-gray-400">Datei auswählen</span>
+                </>
+              )}
               <input
                 type="file"
                 className="hidden"
-                accept="image/*,.pdf,.ppt,.pptx,.doc,.docx"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) {
-                    setFile(f);
-                    if (!form.title) setForm((prev) => ({ ...prev, title: f.name.replace(/\.[^.]+$/, "") }));
-                  }
+                  if (f) { setFile(f); if (!uploadTitle) setUploadTitle(f.name.replace(/\.[^.]+$/, "")); }
                 }}
               />
-              {file ? (
-                <div className="text-center px-4">
-                  <p className="text-sm font-bold text-brand-black truncate">{file.name}</p>
-                  <p className="text-xs text-brand-gray-400 mt-1">{formatSize(file.size)}</p>
-                </div>
-              ) : (
-                <div className="text-center">
-                  <Upload className="w-6 h-6 text-brand-gray-300 mx-auto mb-1" />
-                  <p className="text-sm text-brand-gray-400">Datei auswählen</p>
-                  <p className="text-xs text-brand-gray-300">Bilder, PDF, PowerPoint, Word</p>
-                </div>
-              )}
             </label>
           </div>
 
           <Input
             label="Titel *"
             placeholder="z.B. Inserat Luzerner Zeitung 2026"
-            value={form.title}
-            onChange={(e) => setForm({ ...form, title: e.target.value })}
+            value={uploadTitle}
+            onChange={(e) => setUploadTitle(e.target.value)}
             required
           />
-
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-semibold text-brand-gray-600">Kategorie</label>
-            <select
-              value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
-              className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow"
-            >
-              {MARKETING_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-
           <Input
             label="Beschreibung (optional)"
             placeholder="Kurze Beschreibung..."
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            value={uploadDesc}
+            onChange={(e) => setUploadDesc(e.target.value)}
           />
 
           {uploading && (
             <div className="w-full bg-brand-gray-100 rounded-full h-2">
-              <div className="bg-brand-yellow h-2 rounded-full transition-all" style={{ width: `${progress}%` }} />
+              <div
+                className="bg-brand-yellow h-2 rounded-full transition-all"
+                style={{ width: `${progress}%` }}
+              />
             </div>
           )}
 
           <div className="flex gap-3 pt-2">
-            <Button type="button" variant="ghost" className="flex-1" onClick={() => setShowUpload(false)}>
+            <Button type="button" variant="ghost" className="flex-1" onClick={() => setShowUpload(false)} disabled={uploading}>
               Abbrechen
             </Button>
-            <Button type="submit" variant="primary" className="flex-1" loading={uploading} disabled={!file || !form.title.trim()}>
+            <Button type="submit" variant="primary" className="flex-1" loading={uploading} disabled={!file || !uploadTitle.trim()}>
               Hochladen
             </Button>
           </div>
