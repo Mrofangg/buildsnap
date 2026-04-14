@@ -109,7 +109,7 @@ export default function MarketingPage() {
 
   // Upload form
   const [file, setFile] = useState<File | null>(null);
-  const [form, setForm] = useState({ title: "", description: "", category: MARKETING_CATEGORIES[0] });
+  const [form, setForm] = useState<{ title: string; description: string; category: string }>({ title: "", description: "", category: MARKETING_CATEGORIES[0] });
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
 
@@ -311,7 +311,7 @@ export default function MarketingPage() {
             <label className="text-sm font-semibold text-brand-gray-600">Kategorie</label>
             <select
               value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value as typeof MARKETING_CATEGORIES[number] })}
+              onChange={(e) => setForm({ ...form, category: e.target.value })}
               className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow"
             >
               {MARKETING_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
