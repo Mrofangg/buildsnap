@@ -18,7 +18,7 @@ import {
   deleteImage, createUploadLink, getProjectUploadLinks,
   deactivateUploadLink, setCoverImage, updateImageComment,
   getProjectSubFolders, createProjectSubFolder, deleteProjectSubFolder,
-  renameProjectSubFolder
+  renameProjectSubFolder, updateProject, deleteProject
 } from "@/lib/db";
 import { Project, ProjectImage, UploadLink, ProjectSubFolder, SubFolderType } from "@/types";
 import { formatDate } from "@/lib/utils";
@@ -354,6 +354,9 @@ export default function ProjectDetailPage() {
   };
 
   const [savingElement, setSavingElement] = useState(false);
+  const [showEditProject, setShowEditProject] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", projectNumber: "", location: "" });
+  const [savingProject, setSavingProject] = useState(false);
 
   const handleAddElement = async (type: SubFolderType) => {
     if (!newElementName.trim() || !user) return;
@@ -428,6 +431,45 @@ export default function ProjectDetailPage() {
       toast("Fehler beim Herunterladen", "error");
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleOpenEditProject = () => {
+    if (!project) return;
+    setEditForm({ name: project.name, projectNumber: project.projectNumber || "", location: project.location || "" });
+    setShowEditProject(true);
+  };
+
+  const handleSaveProject = async () => {
+    if (!project || !editForm.name.trim()) return;
+    setSavingProject(true);
+    try {
+      await updateProject(project.id, {
+        name: editForm.name.trim(),
+        projectNumber: editForm.projectNumber.trim() || undefined,
+        location: editForm.location.trim() || undefined,
+      });
+      setProject((prev) => prev ? { ...prev, ...editForm } : prev);
+      setShowEditProject(false);
+      toast("Projekt gespeichert", "success");
+    } catch (e) {
+      console.error(e);
+      toast("Fehler beim Speichern", "error");
+    } finally {
+      setSavingProject(false);
+    }
+  };
+
+  const handleDeleteProject = async () => {
+    if (!project) return;
+    if (!confirm(`Projekt "${project.name}" wirklich löschen?`)) return;
+    try {
+      await deleteProject(project.id);
+      toast("Projekt gelöscht", "info");
+      router.replace("/projects");
+    } catch (e) {
+      console.error(e);
+      toast("Fehler beim Löschen", "error");
     }
   };
 
@@ -535,6 +577,18 @@ export default function ProjectDetailPage() {
               {project.location}
             </p>
           </div>
+          {isManager && (
+            <div className="flex gap-1 flex-shrink-0">
+              <button onClick={handleOpenEditProject}
+                className="w-9 h-9 rounded-xl bg-brand-gray-100 flex items-center justify-center">
+                <Pencil className="w-4 h-4 text-brand-gray-500" />
+              </button>
+              <button onClick={handleDeleteProject}
+                className="w-9 h-9 rounded-xl bg-brand-gray-100 flex items-center justify-center">
+                <Trash2 className="w-4 h-4 text-red-400" />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Cover */}
@@ -603,12 +657,20 @@ export default function ProjectDetailPage() {
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <h2 className="font-black text-brand-black text-base">Produktion</h2>
-            {canCreateElement && (
-              <button onClick={() => { setShowAddElement("Produktion"); setNewElementName(`Element ${produktionFolders.length + 1}`); }}
-                className="flex items-center gap-1 text-xs font-semibold text-brand-yellow">
-                <Plus className="w-3.5 h-3.5" /> Element
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {canUpload && (
+                <button onClick={() => { setUploadSelection("Produktion"); setShowUpload(true); }}
+                  className="flex items-center gap-1 text-xs font-semibold text-brand-gray-500">
+                  <Upload className="w-3.5 h-3.5" /> Fotos
+                </button>
+              )}
+              {canCreateElement && (
+                <button onClick={() => { setShowAddElement("Produktion"); setNewElementName(`Element ${produktionFolders.length + 1}`); }}
+                  className="flex items-center gap-1 text-xs font-semibold text-brand-yellow">
+                  <Plus className="w-3.5 h-3.5" /> Element
+                </button>
+              )}
+            </div>
           </div>
           {produktionImages.length > 0 && (
             <div className="grid grid-cols-3 gap-2">
@@ -653,12 +715,20 @@ export default function ProjectDetailPage() {
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <h2 className="font-black text-brand-black text-base">Montage</h2>
-            {canCreateElement && (
-              <button onClick={() => { setShowAddElement("Montage"); setNewElementName(`Element ${montageFolders.length + 1}`); }}
-                className="flex items-center gap-1 text-xs font-semibold text-brand-yellow">
-                <Plus className="w-3.5 h-3.5" /> Element
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {canUpload && (
+                <button onClick={() => { setUploadSelection("Montage"); setShowUpload(true); }}
+                  className="flex items-center gap-1 text-xs font-semibold text-brand-gray-500">
+                  <Upload className="w-3.5 h-3.5" /> Fotos
+                </button>
+              )}
+              {canCreateElement && (
+                <button onClick={() => { setShowAddElement("Montage"); setNewElementName(`Element ${montageFolders.length + 1}`); }}
+                  className="flex items-center gap-1 text-xs font-semibold text-brand-yellow">
+                  <Plus className="w-3.5 h-3.5" /> Element
+                </button>
+              )}
+            </div>
           </div>
           {montageImages.length > 0 && (
             <div className="grid grid-cols-3 gap-2">
@@ -770,6 +840,41 @@ export default function ProjectDetailPage() {
               disabled={!newElementName.trim() || savingElement}
               loading={savingElement}>
               Erstellen
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Project Modal */}
+      <Modal open={showEditProject} onClose={() => setShowEditProject(false)} title="Projekt bearbeiten">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-brand-gray-600">Name *</label>
+            <input type="text" value={editForm.name}
+              onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+              className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-brand-gray-600">Projektnummer</label>
+            <input type="text" value={editForm.projectNumber}
+              onChange={(e) => setEditForm((f) => ({ ...f, projectNumber: e.target.value }))}
+              placeholder="z.B. 2024-01"
+              className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-brand-gray-600">Ort</label>
+            <input type="text" value={editForm.location}
+              onChange={(e) => setEditForm((f) => ({ ...f, location: e.target.value }))}
+              placeholder="z.B. Zürich"
+              className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow" />
+          </div>
+          <div className="flex gap-3">
+            <Button variant="ghost" className="flex-1" onClick={() => setShowEditProject(false)}>Abbrechen</Button>
+            <Button variant="primary" className="flex-1"
+              onClick={handleSaveProject}
+              disabled={!editForm.name.trim() || savingProject}
+              loading={savingProject}>
+              Speichern
             </Button>
           </div>
         </div>

@@ -67,22 +67,12 @@ export async function getProjects(options?: {
   userId?: string;
   role?: string;
 }): Promise<Project[]> {
-  let q;
-  // Employees only see projects where they are the leader
-  if (options?.role === "employee" && options?.userId) {
-    q = query(
-      collection(db, "projects"),
-      where("active", "==", true),
-      where("projectLeaderId", "==", options.userId),
-      orderBy("createdAt", "desc")
-    );
-  } else {
-    q = query(
-      collection(db, "projects"),
-      where("active", "==", true),
-      orderBy("createdAt", "desc")
-    );
-  }
+  // All authenticated users see all active projects
+  const q = query(
+    collection(db, "projects"),
+    where("active", "==", true),
+    orderBy("createdAt", "desc")
+  );
   const snap = await getDocs(q);
   return snap.docs.map((d) => {
     const data = d.data() as Record<string, unknown>;
@@ -102,6 +92,12 @@ export async function getProject(id: string): Promise<Project | null> {
     ...snap.data(),
     createdAt: (snap.data().createdAt as Timestamp)?.toDate() || new Date(),
   } as Project;
+}
+
+export async function updateProject(id: string, data: {
+  name?: string; projectNumber?: string; location?: string; description?: string;
+}): Promise<void> {
+  await updateDoc(doc(db, "projects", id), data);
 }
 
 export async function deleteProject(id: string): Promise<void> {

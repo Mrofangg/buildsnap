@@ -82,7 +82,7 @@ function SkeletonCard() {
 type SortMode = "name" | "number";
 
 export default function ProjectsPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -109,7 +109,7 @@ export default function ProjectsPage() {
     }
   };
 
-  useEffect(() => { load(); }, [user]);
+  useEffect(() => { if (!authLoading) load(); }, [user, authLoading]);
 
   const leaders = useMemo(() => {
     const map = new Map<string, string>();
