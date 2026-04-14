@@ -36,7 +36,7 @@ function ImageCard({
 }) {
   return (
     <div className="relative rounded-2xl overflow-hidden bg-brand-gray-100 aspect-square group">
-      <img src={image.url} alt="" className="w-full h-full object-cover cursor-pointer" loading="lazy" onClick={onClick} />
+      <img src={image.url} alt="" className="w-full h-full object-cover cursor-pointer" onClick={onClick} />
       <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
 
       {isCover && (

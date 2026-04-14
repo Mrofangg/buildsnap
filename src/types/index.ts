@@ -19,6 +19,8 @@ export interface Project {
   coverImageUrl?: string;
   imageCount: number;
   active: boolean;
+  projectLeaderId?: string;
+  projectLeaderName?: string;
 }
 
 export interface ProjectImage {
@@ -61,3 +63,30 @@ export const PROJECT_PHASES = [
 ] as const;
 
 export type ProjectPhase = (typeof PROJECT_PHASES)[number];
+
+export const MARKETING_CATEGORIES = [
+  "Inserate",
+  "Flyer",
+  "Broschüren",
+  "Präsentationen",
+  "Referenzfotos",
+  "Sonstiges",
+] as const;
+
+export type MarketingCategory = (typeof MARKETING_CATEGORIES)[number];
+
+export interface MarketingAsset {
+  id: string;
+  title: string;
+  description?: string;
+  fileUrl: string;
+  fileType: string;
+  fileName: string;
+  fileSize?: number;
+  storagePath: string;
+  category: MarketingCategory | string;
+  uploadedBy: string;
+  uploadedByName: string;
+  uploadedAt: Date;
+  active: boolean;
+}

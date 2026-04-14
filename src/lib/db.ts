@@ -12,7 +12,6 @@ import {
   serverTimestamp,
   increment,
   type Timestamp,
-  writeBatch,
 } from "firebase/firestore";
 import {
   ref,
@@ -21,9 +20,20 @@ import {
   deleteObject,
 } from "firebase/storage";
 import { db, storage } from "./firebase";
-import { Project, ProjectImage, UploadLink } from "@/types";
+import { Project, ProjectImage, UploadLink, AppUser } from "@/types";
 import { v4 as uuidv4 } from "uuid";
 import imageCompression from "browser-image-compression";
+
+// ── Users ─────────────────────────────────────────────────
+
+export async function getUsers(): Promise<AppUser[]> {
+  const snap = await getDocs(collection(db, "users"));
+  return snap.docs.map((d) => ({
+    uid: d.id,
+    ...d.data(),
+    createdAt: (d.data().createdAt as Timestamp)?.toDate() || new Date(),
+  })) as AppUser[];
+}
 
 // ── Projects ─────────────────────────────────────────────
 
@@ -33,6 +43,8 @@ export async function createProject(data: {
   description?: string;
   userId: string;
   userName: string;
+  projectLeaderId?: string;
+  projectLeaderName?: string;
 }): Promise<string> {
   const docRef = await addDoc(collection(db, "projects"), {
     name: data.name,
@@ -44,16 +56,32 @@ export async function createProject(data: {
     coverImageUrl: null,
     imageCount: 0,
     active: true,
+    projectLeaderId: data.projectLeaderId || null,
+    projectLeaderName: data.projectLeaderName || null,
   });
   return docRef.id;
 }
 
-export async function getProjects(): Promise<Project[]> {
-  const q = query(
-    collection(db, "projects"),
-    where("active", "==", true),
-    orderBy("createdAt", "desc")
-  );
+export async function getProjects(options?: {
+  userId?: string;
+  role?: string;
+}): Promise<Project[]> {
+  let q;
+  // Employees only see projects where they are the leader
+  if (options?.role === "employee" && options?.userId) {
+    q = query(
+      collection(db, "projects"),
+      where("active", "==", true),
+      where("projectLeaderId", "==", options.userId),
+      orderBy("createdAt", "desc")
+    );
+  } else {
+    q = query(
+      collection(db, "projects"),
+      where("active", "==", true),
+      orderBy("createdAt", "desc")
+    );
+  }
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({
     id: d.id,
@@ -91,7 +119,6 @@ export interface UploadOptions {
 export async function uploadImage(opts: UploadOptions): Promise<ProjectImage> {
   const { projectId, file, userId, userName, isExternal, externalName, onProgress } = opts;
 
-  // Compress if image
   let uploadFile = file;
   if (file.type.startsWith("image/")) {
     try {
@@ -112,15 +139,9 @@ export async function uploadImage(opts: UploadOptions): Promise<ProjectImage> {
 
   await new Promise<void>((resolve, reject) => {
     const task = uploadBytesResumable(storageRef, uploadFile);
-    task.on(
-      "state_changed",
-      (snap) => {
-        const pct = (snap.bytesTransferred / snap.totalBytes) * 100;
-        onProgress?.(pct);
-      },
-      reject,
-      () => resolve()
-    );
+    task.on("state_changed", (snap) => {
+      onProgress?.((snap.bytesTransferred / snap.totalBytes) * 100);
+    }, reject, () => resolve());
   });
 
   const url = await getDownloadURL(storageRef);
@@ -141,12 +162,13 @@ export async function uploadImage(opts: UploadOptions): Promise<ProjectImage> {
 
   const docRef = await addDoc(collection(db, "images"), imageData);
 
-  // Update project cover + count
-  const projectRef = doc(db, "projects", projectId);
-  await updateDoc(projectRef, {
-    imageCount: increment(1),
-    coverImageUrl: url,
-  });
+  // Only set cover if not already set
+  const projectSnap = await getDoc(doc(db, "projects", projectId));
+  const updates: any = { imageCount: increment(1) };
+  if (!projectSnap.data()?.coverImageUrl) {
+    updates.coverImageUrl = url;
+  }
+  await updateDoc(doc(db, "projects", projectId), updates);
 
   return {
     id: docRef.id,
@@ -175,18 +197,10 @@ export async function getAllImages(filters?: {
 }): Promise<ProjectImage[]> {
   let q = query(collection(db, "images"), orderBy("uploadedAt", "desc"));
   if (filters?.projectId) {
-    q = query(
-      collection(db, "images"),
-      where("projectId", "==", filters.projectId),
-      orderBy("uploadedAt", "desc")
-    );
+    q = query(collection(db, "images"), where("projectId", "==", filters.projectId), orderBy("uploadedAt", "desc"));
   }
   if (filters?.favoritesOnly) {
-    q = query(
-      collection(db, "images"),
-      where("isFavorite", "==", true),
-      orderBy("uploadedAt", "desc")
-    );
+    q = query(collection(db, "images"), where("isFavorite", "==", true), orderBy("uploadedAt", "desc"));
   }
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({
@@ -208,70 +222,106 @@ export async function deleteImage(image: ProjectImage): Promise<void> {
   const storageRef = ref(storage, (image as any).storagePath);
   try { await deleteObject(storageRef); } catch {}
   await deleteDoc(doc(db, "images", image.id));
-  const projectRef = doc(db, "projects", image.projectId);
-  await updateDoc(projectRef, { imageCount: increment(-1) });
+  await updateDoc(doc(db, "projects", image.projectId), { imageCount: increment(-1) });
 }
 
 // ── Upload Links ──────────────────────────────────────────
 
-export async function createUploadLink(
-  projectId: string,
-  projectName: string,
-  userId: string
-): Promise<string> {
+export async function createUploadLink(projectId: string, projectName: string, userId: string): Promise<string> {
   const token = uuidv4().replace(/-/g, "");
   await addDoc(collection(db, "uploadLinks"), {
-    token,
-    projectId,
-    projectName,
-    active: true,
-    createdBy: userId,
-    createdAt: serverTimestamp(),
-    uploadCount: 0,
+    token, projectId, projectName, active: true,
+    createdBy: userId, createdAt: serverTimestamp(), uploadCount: 0,
   });
   return token;
 }
 
 export async function getUploadLinkByToken(token: string): Promise<UploadLink | null> {
-  const q = query(
-    collection(db, "uploadLinks"),
-    where("token", "==", token),
-    where("active", "==", true)
-  );
+  const q = query(collection(db, "uploadLinks"), where("token", "==", token), where("active", "==", true));
   const snap = await getDocs(q);
   if (snap.empty) return null;
   const d = snap.docs[0];
-  return {
-    ...d.data(),
-    createdAt: (d.data().createdAt as Timestamp)?.toDate() || new Date(),
-  } as UploadLink;
+  return { ...d.data(), createdAt: (d.data().createdAt as Timestamp)?.toDate() || new Date() } as UploadLink;
 }
 
 export async function incrementLinkUploadCount(token: string): Promise<void> {
   const q = query(collection(db, "uploadLinks"), where("token", "==", token));
   const snap = await getDocs(q);
-  if (!snap.empty) {
-    await updateDoc(snap.docs[0].ref, { uploadCount: increment(1) });
-  }
+  if (!snap.empty) await updateDoc(snap.docs[0].ref, { uploadCount: increment(1) });
 }
 
 export async function deactivateUploadLink(token: string): Promise<void> {
   const q = query(collection(db, "uploadLinks"), where("token", "==", token));
   const snap = await getDocs(q);
-  if (!snap.empty) {
-    await updateDoc(snap.docs[0].ref, { active: false });
-  }
+  if (!snap.empty) await updateDoc(snap.docs[0].ref, { active: false });
 }
 
 export async function getProjectUploadLinks(projectId: string): Promise<UploadLink[]> {
-  const q = query(
-    collection(db, "uploadLinks"),
-    where("projectId", "==", projectId),
-    orderBy("createdAt", "desc")
-  );
+  const q = query(collection(db, "uploadLinks"), where("projectId", "==", projectId), orderBy("createdAt", "desc"));
   const snap = await getDocs(q);
   return snap.docs.map((d) => ({
     ...d.data(),
     createdAt: (d.data().createdAt as Timestamp)?.toDate() || new Date(),
   })) as UploadLink[];
+}
+
+// ── Marketing Assets ──────────────────────────────────────
+
+export async function uploadMarketingAsset(opts: {
+  file: File;
+  title: string;
+  description?: string;
+  category: string;
+  userId: string;
+  userName: string;
+  onProgress?: (pct: number) => void;
+}): Promise<void> {
+  const { file, title, description, category, userId, userName, onProgress } = opts;
+  const fileId = uuidv4();
+  const ext = file.name.split(".").pop() || "bin";
+  const path = `marketing/${fileId}.${ext}`;
+  const storageRef = ref(storage, path);
+
+  await new Promise<void>((resolve, reject) => {
+    const task = uploadBytesResumable(storageRef, file);
+    task.on("state_changed", (snap) => {
+      onProgress?.((snap.bytesTransferred / snap.totalBytes) * 100);
+    }, reject, () => resolve());
+  });
+
+  const url = await getDownloadURL(storageRef);
+  await addDoc(collection(db, "marketingAssets"), {
+    title,
+    description: description || null,
+    fileUrl: url,
+    fileType: file.type,
+    fileName: file.name,
+    fileSize: file.size,
+    storagePath: path,
+    category,
+    uploadedBy: userId,
+    uploadedByName: userName,
+    uploadedAt: serverTimestamp(),
+    active: true,
+  });
+}
+
+export async function getMarketingAssets(): Promise<import("@/types").MarketingAsset[]> {
+  const q = query(
+    collection(db, "marketingAssets"),
+    where("active", "==", true),
+    orderBy("uploadedAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => ({
+    id: d.id,
+    ...d.data(),
+    uploadedAt: (d.data().uploadedAt as Timestamp)?.toDate() || new Date(),
+  })) as import("@/types").MarketingAsset[];
+}
+
+export async function deleteMarketingAsset(asset: import("@/types").MarketingAsset): Promise<void> {
+  const storageRef = ref(storage, asset.storagePath);
+  try { await deleteObject(storageRef); } catch {}
+  await updateDoc(doc(db, "marketingAssets", asset.id), { active: false });
 }
