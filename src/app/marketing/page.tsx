@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import {
   FileText, Image as ImageIcon, Upload, Download, Trash2,
-  Search, X, Plus, ChevronDown, File, Presentation,
+  Search, X, Plus, ChevronDown, File,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/layout/app-shell";
@@ -17,7 +17,7 @@ function fileIcon(type: string) {
   if (type.startsWith("image/")) return <ImageIcon className="w-6 h-6 text-brand-yellow" />;
   if (type === "application/pdf") return <FileText className="w-6 h-6 text-red-400" />;
   if (type.includes("presentation") || type.includes("powerpoint"))
-    return <Presentation className="w-6 h-6 text-orange-400" />;
+    return <File className="w-6 h-6 text-orange-400" />;
   return <File className="w-6 h-6 text-brand-gray-400" />;
 }
 
@@ -311,7 +311,7 @@ export default function MarketingPage() {
             <label className="text-sm font-semibold text-brand-gray-600">Kategorie</label>
             <select
               value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
+              onChange={(e) => setForm({ ...form, category: e.target.value as typeof MARKETING_CATEGORIES[number] })}
               className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow"
             >
               {MARKETING_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}

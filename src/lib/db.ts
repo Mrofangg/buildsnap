@@ -20,7 +20,7 @@ import {
   deleteObject,
 } from "firebase/storage";
 import { db, storage } from "./firebase";
-import { Project, ProjectImage, UploadLink, AppUser } from "@/types";
+import { Project, ProjectImage, UploadLink, AppUser, MarketingAsset } from "@/types";
 import { v4 as uuidv4 } from "uuid";
 import imageCompression from "browser-image-compression";
 
@@ -306,7 +306,7 @@ export async function uploadMarketingAsset(opts: {
   });
 }
 
-export async function getMarketingAssets(): Promise<import("@/types").MarketingAsset[]> {
+export async function getMarketingAssets(): Promise<MarketingAsset[]> {
   const q = query(
     collection(db, "marketingAssets"),
     where("active", "==", true),
@@ -317,10 +317,10 @@ export async function getMarketingAssets(): Promise<import("@/types").MarketingA
     id: d.id,
     ...d.data(),
     uploadedAt: (d.data().uploadedAt as Timestamp)?.toDate() || new Date(),
-  })) as import("@/types").MarketingAsset[];
+  })) as MarketingAsset[];
 }
 
-export async function deleteMarketingAsset(asset: import("@/types").MarketingAsset): Promise<void> {
+export async function deleteMarketingAsset(asset: MarketingAsset): Promise<void> {
   const storageRef = ref(storage, asset.storagePath);
   try { await deleteObject(storageRef); } catch {}
   await updateDoc(doc(db, "marketingAssets", asset.id), { active: false });
