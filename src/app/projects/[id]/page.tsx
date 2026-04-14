@@ -250,14 +250,16 @@ export default function ProjectDetailPage() {
     try {
       const [p, imgs, folders, lnks] = await Promise.all([
         getProject(projectId),
-        getProjectImages(projectId),
-        getProjectSubFolders(projectId),
-        user?.role === "admin" ? getProjectUploadLinks(projectId) : Promise.resolve([]),
+        getProjectImages(projectId).catch(() => []),
+        getProjectSubFolders(projectId).catch(() => []),
+        (user?.role === "admin" || user?.role === "projektleiter")
+          ? getProjectUploadLinks(projectId).catch(() => [])
+          : Promise.resolve([]),
       ]);
       setProject(p);
-      setImages(imgs);
-      setSubFolders(folders);
-      setLinks(lnks);
+      setImages(imgs as ProjectImage[]);
+      setSubFolders(folders as ProjectSubFolder[]);
+      setLinks(lnks as UploadLink[]);
     } catch (e) {
       console.error(e);
       toast("Fehler beim Laden", "error");
@@ -342,11 +344,12 @@ export default function ProjectDetailPage() {
 
   const lightboxIndex = lightboxImg ? lightboxList.findIndex((i) => i.id === lightboxImg.id) : -1;
 
-  const canUpload = user?.role === "admin" || user?.role === "employee";
-  const canShare = user?.role === "admin";
-  const canDelete = user?.role === "admin";
-  const canSetCover = user?.role === "admin";
-  const canManage = user?.role === "admin";
+  const isManager = user?.role === "admin" || user?.role === "projektleiter";
+  const canUpload = isManager || user?.role === "employee";
+  const canShare = isManager;
+  const canDelete = isManager;
+  const canSetCover = isManager;
+  const canManage = isManager;
 
   const produktionFolders = subFolders.filter((f) => f.type === "Produktion");
   const montageFolders = subFolders.filter((f) => f.type === "Montage");

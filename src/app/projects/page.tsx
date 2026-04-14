@@ -98,7 +98,7 @@ export default function ProjectsPage() {
     try {
       const [data, userList] = await Promise.all([
         getProjects({ userId: user?.uid, role: user?.role }),
-        user?.role === "admin" ? getUsers() : Promise.resolve([]),
+        (user?.role === "admin" || user?.role === "projektleiter") ? getUsers() : Promise.resolve([]),
       ]);
       setProjects(data);
       setUsers(userList);
@@ -168,7 +168,7 @@ export default function ProjectsPage() {
     }
   };
 
-  const canCreate = user?.role === "admin";
+  const canCreate = user?.role === "admin" || user?.role === "projektleiter";
 
   return (
     <AppShell>
