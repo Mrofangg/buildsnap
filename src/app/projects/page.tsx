@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { Plus, FolderOpen, Image as ImageIcon, Search, X, ChevronDown } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
@@ -94,22 +94,33 @@ export default function ProjectsPage() {
   const [filterLeader, setFilterLeader] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("number");
 
-  const load = async () => {
+  const isManager = user?.role === "admin" || user?.role === "projektleiter";
+
+  const load = useCallback(async () => {
+    setLoading(true);
     try {
       const [data, userList] = await Promise.all([
-        getProjects({ userId: user?.uid, role: user?.role }),
-        (user?.role === "admin" || user?.role === "projektleiter") ? getUsers() : Promise.resolve([]),
+        getProjects(),
+        isManager ? getUsers() : Promise.resolve([]),
       ]);
       setProjects(data);
-      setUsers(userList);
+      setUsers(userList as AppUser[]);
     } catch {
       toast("Fehler beim Laden", "error");
     } finally {
       setLoading(false);
     }
-  };
+  }, [isManager]);
 
-  useEffect(() => { if (!authLoading) load(); }, [user, authLoading]);
+  // Load once auth is ready
+  useEffect(() => { if (!authLoading && user) load(); }, [user, authLoading]);
+
+  // Reload every time the page becomes visible (navigating back from detail)
+  useEffect(() => {
+    const onVisible = () => { if (!document.hidden && user && !authLoading) load(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [load, user, authLoading]);
 
   const leaders = useMemo(() => {
     const map = new Map<string, string>();
@@ -168,7 +179,7 @@ export default function ProjectsPage() {
     }
   };
 
-  const canCreate = user?.role === "admin" || user?.role === "projektleiter";
+  const canCreate = isManager;
 
   return (
     <AppShell>

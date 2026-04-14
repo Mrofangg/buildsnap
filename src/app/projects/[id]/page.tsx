@@ -462,6 +462,7 @@ export default function ProjectDetailPage() {
       setProject((prev) => prev ? { ...prev, ...editForm } : prev);
       setShowEditProject(false);
       toast("Projekt gespeichert", "success");
+      router.refresh();
     } catch (e) {
       console.error(e);
       toast("Fehler beim Speichern", "error");

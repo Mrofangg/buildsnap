@@ -63,11 +63,7 @@ export async function createProject(data: {
   return docRef.id;
 }
 
-export async function getProjects(options?: {
-  userId?: string;
-  role?: string;
-}): Promise<Project[]> {
-  // All authenticated users see all active projects
+export async function getProjects(): Promise<Project[]> {
   const q = query(
     collection(db, "projects"),
     where("active", "==", true),
