@@ -23,6 +23,7 @@ interface ImageUploadProps {
   isExternal?: boolean;
   externalName?: string;
   subFolderId?: string;
+  sectionType?: string;
   onComplete?: () => void;
   onClose?: () => void;
 }
@@ -34,6 +35,7 @@ export function ImageUploader({
   isExternal,
   externalName,
   subFolderId,
+  sectionType,
   onComplete,
   onClose,
 }: ImageUploadProps) {
@@ -90,6 +92,7 @@ export function ImageUploader({
           isExternal,
           externalName,
           subFolderId,
+          sectionType,
           onProgress: (pct) => {
             setFiles((prev) =>
               prev.map((x, idx) =>

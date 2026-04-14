@@ -155,7 +155,7 @@ function ImageThumb({ image, onClick, onFavorite, onDelete, onSetCover, canDelet
 // ── Sub-folder element row ─────────────────────────────────
 
 function ElementRow({ folder, images, onUpload, onDelete, onImageClick, onFavorite, onDeleteImage, onSetCover,
-  canManage, canDelete, canSetCover, coverImageUrl, lightboxImages }: {
+  canManage, canDeleteFolder, canSetCover, coverImageUrl, lightboxImages, getCanDeleteImage }: {
   folder: ProjectSubFolder;
   images: ProjectImage[];
   onUpload: () => void;
@@ -165,10 +165,11 @@ function ElementRow({ folder, images, onUpload, onDelete, onImageClick, onFavori
   onDeleteImage: (img: ProjectImage) => void;
   onSetCover: (img: ProjectImage) => void;
   canManage: boolean;
-  canDelete: boolean;
+  canDeleteFolder: boolean;
   canSetCover: boolean;
   coverImageUrl?: string;
   lightboxImages: ProjectImage[];
+  getCanDeleteImage: (img: ProjectImage) => boolean;
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -187,7 +188,7 @@ function ElementRow({ folder, images, onUpload, onDelete, onImageClick, onFavori
               <Upload className="w-3.5 h-3.5 text-brand-black" />
             </button>
           )}
-          {canDelete && (
+          {canDeleteFolder && (
             <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
               className="w-7 h-7 rounded-xl bg-brand-gray-100 flex items-center justify-center">
               <Trash2 className="w-3 h-3 text-brand-gray-400" />
@@ -211,7 +212,7 @@ function ElementRow({ folder, images, onUpload, onDelete, onImageClick, onFavori
                   onFavorite={() => onFavorite(img)}
                   onDelete={() => onDeleteImage(img)}
                   onSetCover={() => onSetCover(img)}
-                  canDelete={canDelete} canSetCover={canSetCover}
+                  canDelete={getCanDeleteImage(img)} canSetCover={canSetCover}
                   isCover={coverImageUrl === img.url} />
               ))}
             </div>
@@ -237,7 +238,6 @@ export default function ProjectDetailPage() {
   const [links, setLinks] = useState<UploadLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
-  const [uploadSubFolderId, setUploadSubFolderId] = useState<string | undefined>();
   const [showShare, setShowShare] = useState(false);
   const [lightboxImg, setLightboxImg] = useState<ProjectImage | null>(null);
   const [lightboxList, setLightboxList] = useState<ProjectImage[]>([]);
@@ -245,6 +245,7 @@ export default function ProjectDetailPage() {
   const [copied, setCopied] = useState<string | null>(null);
   const [showAddElement, setShowAddElement] = useState<SubFolderType | null>(null);
   const [newElementName, setNewElementName] = useState("");
+  const [uploadSelection, setUploadSelection] = useState<string>("");
 
   const load = useCallback(async () => {
     try {
@@ -276,6 +277,11 @@ export default function ProjectDetailPage() {
   };
 
   const handleDelete = async (img: ProjectImage) => {
+    if (!user) return;
+    if (!isManager && img.uploadedBy !== user.uid) {
+      toast("Du kannst nur deine eigenen Fotos löschen", "error");
+      return;
+    }
     if (!confirm("Foto wirklich löschen?")) return;
     await deleteImage(img);
     setImages((prev) => prev.filter((i) => i.id !== img.id));
@@ -359,16 +365,26 @@ export default function ProjectDetailPage() {
   const lightboxIndex = lightboxImg ? lightboxList.findIndex((i) => i.id === lightboxImg.id) : -1;
 
   const isManager = user?.role === "admin" || user?.role === "projektleiter";
-  const canUpload = isManager || user?.role === "employee";
+  const canUpload = !!user;
   const canShare = isManager;
-  const canDelete = isManager;
+  const canDeleteFolder = isManager;
   const canSetCover = isManager;
   const canManage = isManager;
+  const canCreateElement = !!user;
 
   const produktionFolders = subFolders.filter((f) => f.type === "Produktion");
   const montageFolders = subFolders.filter((f) => f.type === "Montage");
-  const unassignedImages = images.filter((i) => !i.subFolderId);
+  const unassignedImages = images.filter((i) => !i.subFolderId && !i.sectionType);
+  const produktionImages = images.filter((i) => i.sectionType === "Produktion" && !i.subFolderId);
+  const montageImages = images.filter((i) => i.sectionType === "Montage" && !i.subFolderId);
   const getImagesForFolder = (folderId: string) => images.filter((i) => i.subFolderId === folderId);
+  const getCanDeleteImage = (img: ProjectImage) => isManager || img.uploadedBy === user?.uid;
+
+  // Parse upload selection: "" = Allgemein, "Produktion"/"Montage" = section, else = folderId
+  const isSectionSelection = uploadSelection === "Produktion" || uploadSelection === "Montage";
+  const uploadSubFolderIdFinal = !isSectionSelection && uploadSelection ? uploadSelection : undefined;
+  const uploadSectionTypeFinal = isSectionSelection ? uploadSelection as SubFolderType :
+    uploadSelection ? subFolders.find(f => f.id === uploadSelection)?.type : undefined;
 
   if (loading) {
     return (
@@ -437,7 +453,7 @@ export default function ProjectDetailPage() {
         {/* Actions */}
         <div className="flex gap-2">
           {canUpload && (
-            <Button variant="primary" size="sm" className="flex-1" onClick={() => { setUploadSubFolderId(undefined); setShowUpload(true); }}>
+            <Button variant="primary" size="sm" className="flex-1" onClick={() => { setUploadSelection(""); setShowUpload(true); }}>
               <Upload className="w-4 h-4" />
               Fotos hochladen
             </Button>
@@ -470,17 +486,30 @@ export default function ProjectDetailPage() {
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <h2 className="font-black text-brand-black text-base">Produktion</h2>
-            {canManage && (
+            {canCreateElement && (
               <button onClick={() => { setShowAddElement("Produktion"); setNewElementName(`Element ${produktionFolders.length + 1}`); }}
                 className="flex items-center gap-1 text-xs font-semibold text-brand-yellow">
                 <Plus className="w-3.5 h-3.5" /> Element
               </button>
             )}
           </div>
-          {produktionFolders.length === 0 ? (
+          {produktionImages.length > 0 && (
+            <div className="grid grid-cols-3 gap-2">
+              {produktionImages.map((img) => (
+                <ImageThumb key={img.id} image={img}
+                  onClick={() => openLightbox(img, produktionImages)}
+                  onFavorite={() => handleFavorite(img)}
+                  onDelete={() => handleDelete(img)}
+                  onSetCover={() => handleSetCover(img)}
+                  canDelete={getCanDeleteImage(img)} canSetCover={canSetCover}
+                  isCover={project.coverImageUrl === img.url} />
+              ))}
+            </div>
+          )}
+          {produktionFolders.length === 0 && produktionImages.length === 0 ? (
             <div className="bg-white rounded-2xl px-4 py-5 text-center shadow-card">
               <p className="text-xs text-brand-gray-300">Noch keine Elemente</p>
-              {canManage && <button onClick={() => { setShowAddElement("Produktion"); setNewElementName("Element 1"); }}
+              {canCreateElement && <button onClick={() => { setShowAddElement("Produktion"); setNewElementName("Element 1"); }}
                 className="text-xs text-brand-yellow font-semibold mt-1">+ Element hinzufügen</button>}
             </div>
           ) : (
@@ -488,13 +517,13 @@ export default function ProjectDetailPage() {
               <ElementRow key={folder.id} folder={folder}
                 images={getImagesForFolder(folder.id)}
                 lightboxImages={images.filter((i) => i.subFolderId === folder.id)}
-                onUpload={() => { setUploadSubFolderId(folder.id); setShowUpload(true); }}
+                onUpload={() => { setUploadSelection(folder.id); setShowUpload(true); }}
                 onDelete={() => handleDeleteFolder(folder)}
                 onImageClick={openLightbox}
                 onFavorite={handleFavorite}
                 onDeleteImage={handleDelete}
                 onSetCover={handleSetCover}
-                canManage={canManage} canDelete={canDelete} canSetCover={canSetCover}
+                canManage={canManage} canDeleteFolder={canDeleteFolder} canSetCover={canSetCover} getCanDeleteImage={getCanDeleteImage}
                 coverImageUrl={project.coverImageUrl} />
             ))
           )}
@@ -504,17 +533,30 @@ export default function ProjectDetailPage() {
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <h2 className="font-black text-brand-black text-base">Montage</h2>
-            {canManage && (
+            {canCreateElement && (
               <button onClick={() => { setShowAddElement("Montage"); setNewElementName(`Element ${montageFolders.length + 1}`); }}
                 className="flex items-center gap-1 text-xs font-semibold text-brand-yellow">
                 <Plus className="w-3.5 h-3.5" /> Element
               </button>
             )}
           </div>
-          {montageFolders.length === 0 ? (
+          {montageImages.length > 0 && (
+            <div className="grid grid-cols-3 gap-2">
+              {montageImages.map((img) => (
+                <ImageThumb key={img.id} image={img}
+                  onClick={() => openLightbox(img, montageImages)}
+                  onFavorite={() => handleFavorite(img)}
+                  onDelete={() => handleDelete(img)}
+                  onSetCover={() => handleSetCover(img)}
+                  canDelete={getCanDeleteImage(img)} canSetCover={canSetCover}
+                  isCover={project.coverImageUrl === img.url} />
+              ))}
+            </div>
+          )}
+          {montageFolders.length === 0 && montageImages.length === 0 ? (
             <div className="bg-white rounded-2xl px-4 py-5 text-center shadow-card">
               <p className="text-xs text-brand-gray-300">Noch keine Elemente</p>
-              {canManage && <button onClick={() => { setShowAddElement("Montage"); setNewElementName("Element 1"); }}
+              {canCreateElement && <button onClick={() => { setShowAddElement("Montage"); setNewElementName("Element 1"); }}
                 className="text-xs text-brand-yellow font-semibold mt-1">+ Element hinzufügen</button>}
             </div>
           ) : (
@@ -522,13 +564,13 @@ export default function ProjectDetailPage() {
               <ElementRow key={folder.id} folder={folder}
                 images={getImagesForFolder(folder.id)}
                 lightboxImages={images.filter((i) => i.subFolderId === folder.id)}
-                onUpload={() => { setUploadSubFolderId(folder.id); setShowUpload(true); }}
+                onUpload={() => { setUploadSelection(folder.id); setShowUpload(true); }}
                 onDelete={() => handleDeleteFolder(folder)}
                 onImageClick={openLightbox}
                 onFavorite={handleFavorite}
                 onDeleteImage={handleDelete}
                 onSetCover={handleSetCover}
-                canManage={canManage} canDelete={canDelete} canSetCover={canSetCover}
+                canManage={canManage} canDeleteFolder={canDeleteFolder} canSetCover={canSetCover} getCanDeleteImage={getCanDeleteImage}
                 coverImageUrl={project.coverImageUrl} />
             ))
           )}
@@ -545,7 +587,7 @@ export default function ProjectDetailPage() {
                   onFavorite={() => handleFavorite(img)}
                   onDelete={() => handleDelete(img)}
                   onSetCover={() => handleSetCover(img)}
-                  canDelete={canDelete} canSetCover={canSetCover}
+                  canDelete={getCanDeleteImage(img)} canSetCover={canSetCover}
                   isCover={project.coverImageUrl === img.url} />
               ))}
             </div>
@@ -554,33 +596,32 @@ export default function ProjectDetailPage() {
       </div>
 
       {/* Upload Modal */}
-      <Modal open={showUpload} onClose={() => setShowUpload(false)} title="Fotos hochladen">
+      <Modal open={showUpload} onClose={() => { setShowUpload(false); setUploadSelection(""); }} title="Fotos hochladen">
         <div className="flex flex-col gap-4">
-          {subFolders.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-semibold text-brand-gray-600">In Ordner ablegen</label>
-              <select value={uploadSubFolderId || ""}
-                onChange={(e) => setUploadSubFolderId(e.target.value || undefined)}
-                className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow">
-                <option value="">Allgemein (kein Ordner)</option>
-                {["Produktion", "Montage"].map((type) => {
-                  const folders = subFolders.filter((f) => f.type === type);
-                  if (!folders.length) return null;
-                  return (
-                    <optgroup key={type} label={type}>
-                      {folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-                    </optgroup>
-                  );
-                })}
-              </select>
-            </div>
-          )}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-brand-gray-600">Bereich</label>
+            <select value={uploadSelection}
+              onChange={(e) => setUploadSelection(e.target.value)}
+              className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow">
+              <option value="">Allgemein</option>
+              {(["Produktion", "Montage"] as SubFolderType[]).map((type) => {
+                const folders = subFolders.filter((f) => f.type === type);
+                return (
+                  <optgroup key={type} label={type}>
+                    <option value={type}>{type} (allgemein)</option>
+                    {folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </optgroup>
+                );
+              })}
+            </select>
+          </div>
           <ImageUploader
             projectId={projectId}
             userId={user?.uid}
             userName={user?.displayName}
-            subFolderId={uploadSubFolderId}
-            onComplete={() => { setShowUpload(false); load(); }}
+            subFolderId={uploadSubFolderIdFinal}
+            sectionType={uploadSectionTypeFinal}
+            onComplete={() => { setShowUpload(false); setUploadSelection(""); load(); }}
           />
         </div>
       </Modal>

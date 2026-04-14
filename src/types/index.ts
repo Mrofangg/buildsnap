@@ -39,6 +39,7 @@ export interface ProjectImage {
   externalUploaderName?: string;
   comment?: string;
   subFolderId?: string;
+  sectionType?: SubFolderType;
 }
 
 export type SubFolderType = "Produktion" | "Montage";

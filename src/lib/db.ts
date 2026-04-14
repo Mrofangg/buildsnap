@@ -119,10 +119,11 @@ export interface UploadOptions {
   externalName?: string;
   onProgress?: (pct: number) => void;
   subFolderId?: string;
+  sectionType?: string;
 }
 
 export async function uploadImage(opts: UploadOptions): Promise<ProjectImage> {
-  const { projectId, file, userId, userName, isExternal, externalName, onProgress, subFolderId } = opts;
+  const { projectId, file, userId, userName, isExternal, externalName, onProgress, subFolderId, sectionType } = opts;
 
   let uploadFile = file;
   if (file.type.startsWith("image/")) {
@@ -164,6 +165,7 @@ export async function uploadImage(opts: UploadOptions): Promise<ProjectImage> {
     externalUploaderName: externalName || null,
     storagePath: path,
     subFolderId: subFolderId || null,
+    sectionType: sectionType || null,
   };
 
   const docRef = await addDoc(collection(db, "images"), imageData);
