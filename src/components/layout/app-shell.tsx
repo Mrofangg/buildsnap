@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { LayoutGrid, Star, LogOut, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
@@ -15,6 +15,12 @@ const navItems = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.push("/login");
+  };
 
   const visibleNav = navItems.filter(
     (item) => !item.roles || (user && item.roles.includes(user.role))
@@ -24,9 +30,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-brand-gray-50 flex flex-col max-w-md mx-auto relative">
       {/* Top bar */}
       <header className="sticky top-0 z-40 bg-brand-black border-b border-brand-black px-4 h-14 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <img src="/fanger-logo.png" alt="Fanger" className="h-8 w-8 rounded-lg object-cover" />
-          <span className="font-black text-white tracking-tight text-lg">BuildSnap</span>
+        <div className="flex items-center">
+          <img src="/fanger-logo.png" alt="Fanger" className="h-9 w-auto object-contain" />
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 text-xs text-white/60">
@@ -38,7 +43,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </span>
           </div>
           <button
-            onClick={() => signOut()}
+            onClick={handleSignOut}
             className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-white/10 transition-colors"
             title="Abmelden"
           >

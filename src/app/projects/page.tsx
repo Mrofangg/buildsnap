@@ -84,6 +84,7 @@ export default function ProjectsPage() {
   const [form, setForm] = useState({ name: "", phase: "", description: "", projectLeaderId: "", projectLeaderName: "" });
   const [search, setSearch] = useState("");
   const [filterPhase, setFilterPhase] = useState("");
+  const [filterLeader, setFilterLeader] = useState("");
 
   const load = async () => {
     try {
@@ -106,9 +107,10 @@ export default function ProjectsPage() {
     return projects.filter((p) => {
       const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase());
       const matchPhase = !filterPhase || p.phase === filterPhase;
-      return matchSearch && matchPhase;
+      const matchLeader = !filterLeader || p.projectLeaderId === filterLeader;
+      return matchSearch && matchPhase && matchLeader;
     });
-  }, [projects, search, filterPhase]);
+  }, [projects, search, filterPhase, filterLeader]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,6 +139,13 @@ export default function ProjectsPage() {
 
   const canCreate = user?.role === "admin";
   const phases = Array.from(new Set(projects.map((p) => p.phase).filter(Boolean))) as string[];
+  const leaders = Array.from(
+    new Map(
+      projects
+        .filter((p) => p.projectLeaderId && p.projectLeaderName)
+        .map((p) => [p.projectLeaderId, p.projectLeaderName])
+    ).entries()
+  ) as [string, string][];
 
   return (
     <AppShell>
@@ -158,9 +167,9 @@ export default function ProjectsPage() {
           )}
         </div>
 
-        {/* Search + Filter */}
-        <div className="flex gap-2 mb-4">
-          <div className="flex-1 relative">
+        {/* Search + Filters */}
+        <div className="flex flex-col gap-2 mb-4">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-brand-gray-300" />
             <input
               type="text"
@@ -175,17 +184,34 @@ export default function ProjectsPage() {
               </button>
             )}
           </div>
-          {phases.length > 0 && (
-            <div className="relative">
-              <select
-                value={filterPhase}
-                onChange={(e) => setFilterPhase(e.target.value)}
-                className="appearance-none pl-3 pr-7 py-2.5 bg-white rounded-2xl text-sm border border-brand-gray-100 focus:outline-none focus:border-brand-yellow shadow-card text-brand-gray-500 font-medium"
-              >
-                <option value="">Alle</option>
-                {phases.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-brand-gray-400 pointer-events-none" />
+          {(phases.length > 0 || leaders.length > 0) && (
+            <div className="flex gap-2">
+              {phases.length > 0 && (
+                <div className="relative flex-1">
+                  <select
+                    value={filterPhase}
+                    onChange={(e) => setFilterPhase(e.target.value)}
+                    className="w-full appearance-none pl-3 pr-7 py-2.5 bg-white rounded-2xl text-sm border border-brand-gray-100 focus:outline-none focus:border-brand-yellow shadow-card text-brand-gray-500 font-medium"
+                  >
+                    <option value="">Alle Phasen</option>
+                    {phases.map((p) => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-brand-gray-400 pointer-events-none" />
+                </div>
+              )}
+              {leaders.length > 0 && (
+                <div className="relative flex-1">
+                  <select
+                    value={filterLeader}
+                    onChange={(e) => setFilterLeader(e.target.value)}
+                    className="w-full appearance-none pl-3 pr-7 py-2.5 bg-white rounded-2xl text-sm border border-brand-gray-100 focus:outline-none focus:border-brand-yellow shadow-card text-brand-gray-500 font-medium"
+                  >
+                    <option value="">Alle Leiter</option>
+                    {leaders.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-brand-gray-400 pointer-events-none" />
+                </div>
+              )}
             </div>
           )}
         </div>
