@@ -20,7 +20,7 @@ import {
   deleteObject,
 } from "firebase/storage";
 import { db, storage } from "./firebase";
-import { Project, ProjectImage, UploadLink, AppUser, MarketingAsset } from "@/types";
+import { Project, ProjectImage, UploadLink, AppUser, MarketingAsset, MarketingCategory } from "@/types";
 import { v4 as uuidv4 } from "uuid";
 import imageCompression from "browser-image-compression";
 
@@ -37,8 +37,9 @@ export async function getUsers(): Promise<AppUser[]> {
 // ── Projects ─────────────────────────────────────────────
 
 export async function createProject(data: {
+  projectNumber?: string;
   name: string;
-  phase?: string;
+  location?: string;
   description?: string;
   userId: string;
   userName: string;
@@ -46,8 +47,9 @@ export async function createProject(data: {
   projectLeaderName?: string;
 }): Promise<string> {
   const docRef = await addDoc(collection(db, "projects"), {
+    projectNumber: data.projectNumber || null,
     name: data.name,
-    phase: data.phase || null,
+    location: data.location || null,
     description: data.description || null,
     createdBy: data.userId,
     createdByName: data.userName,
@@ -214,6 +216,10 @@ export async function toggleFavorite(imageId: string, current: boolean): Promise
   await updateDoc(doc(db, "images", imageId), { isFavorite: !current });
 }
 
+export async function updateImageComment(imageId: string, comment: string): Promise<void> {
+  await updateDoc(doc(db, "images", imageId), { comment: comment || null });
+}
+
 export async function setCoverImage(projectId: string, imageUrl: string): Promise<void> {
   await updateDoc(doc(db, "projects", projectId), { coverImageUrl: imageUrl });
 }
@@ -266,18 +272,46 @@ export async function getProjectUploadLinks(projectId: string): Promise<UploadLi
   });
 }
 
+// ── Marketing Categories ──────────────────────────────────
+
+export async function getMarketingCategories(): Promise<MarketingCategory[]> {
+  const q = query(collection(db, "marketingCategories"), orderBy("order", "asc"));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => {
+    const data = d.data() as Record<string, unknown>;
+    return { id: d.id, ...data, createdAt: (data.createdAt as Timestamp)?.toDate() || new Date() } as MarketingCategory;
+  });
+}
+
+export async function createMarketingCategory(name: string, userId: string): Promise<string> {
+  const existing = await getMarketingCategories();
+  const order = existing.length;
+  const docRef = await addDoc(collection(db, "marketingCategories"), {
+    name,
+    createdBy: userId,
+    createdAt: serverTimestamp(),
+    order,
+  });
+  return docRef.id;
+}
+
+export async function deleteMarketingCategory(categoryId: string): Promise<void> {
+  await deleteDoc(doc(db, "marketingCategories", categoryId));
+}
+
 // ── Marketing Assets ──────────────────────────────────────
 
 export async function uploadMarketingAsset(opts: {
   file: File;
   title: string;
   description?: string;
-  category: string;
+  categoryId: string;
+  categoryName: string;
   userId: string;
   userName: string;
   onProgress?: (pct: number) => void;
 }): Promise<void> {
-  const { file, title, description, category, userId, userName, onProgress } = opts;
+  const { file, title, description, categoryId, categoryName, userId, userName, onProgress } = opts;
   const fileId = uuidv4();
   const ext = file.name.split(".").pop() || "bin";
   const path = `marketing/${fileId}.${ext}`;
@@ -299,7 +333,8 @@ export async function uploadMarketingAsset(opts: {
     fileName: file.name,
     fileSize: file.size,
     storagePath: path,
-    category,
+    categoryId,
+    categoryName,
     uploadedBy: userId,
     uploadedByName: userName,
     uploadedAt: serverTimestamp(),
@@ -307,12 +342,22 @@ export async function uploadMarketingAsset(opts: {
   });
 }
 
-export async function getMarketingAssets(): Promise<MarketingAsset[]> {
-  const q = query(
-    collection(db, "marketingAssets"),
-    where("active", "==", true),
-    orderBy("uploadedAt", "desc")
-  );
+export async function getMarketingAssets(categoryId?: string): Promise<MarketingAsset[]> {
+  let q;
+  if (categoryId) {
+    q = query(
+      collection(db, "marketingAssets"),
+      where("active", "==", true),
+      where("categoryId", "==", categoryId),
+      orderBy("uploadedAt", "desc")
+    );
+  } else {
+    q = query(
+      collection(db, "marketingAssets"),
+      where("active", "==", true),
+      orderBy("uploadedAt", "desc")
+    );
+  }
   const snap = await getDocs(q);
   return snap.docs.map((d) => {
     const data = d.data() as Record<string, unknown>;

@@ -10,8 +10,9 @@ export interface AppUser {
 
 export interface Project {
   id: string;
+  projectNumber?: string;
   name: string;
-  phase?: string;
+  location?: string;
   description?: string;
   createdBy: string;
   createdByName: string;
@@ -36,6 +37,7 @@ export interface ProjectImage {
   fileSize?: number;
   isExternal?: boolean;
   externalUploaderName?: string;
+  comment?: string;
 }
 
 export interface UploadLink {
@@ -49,31 +51,13 @@ export interface UploadLink {
   uploadCount: number;
 }
 
-export const PROJECT_PHASES = [
-  "Planung",
-  "Erdarbeiten",
-  "Rohbau",
-  "Dach",
-  "Fassade",
-  "Ausbau",
-  "Elektrik & Sanitär",
-  "Innenausbau",
-  "Fertigstellung",
-  "Übergabe",
-] as const;
-
-export type ProjectPhase = (typeof PROJECT_PHASES)[number];
-
-export const MARKETING_CATEGORIES = [
-  "Inserate",
-  "Flyer",
-  "Broschüren",
-  "Präsentationen",
-  "Referenzfotos",
-  "Sonstiges",
-] as const;
-
-export type MarketingCategory = (typeof MARKETING_CATEGORIES)[number];
+export interface MarketingCategory {
+  id: string;
+  name: string;
+  createdAt: Date;
+  createdBy: string;
+  order: number;
+}
 
 export interface MarketingAsset {
   id: string;
@@ -84,7 +68,8 @@ export interface MarketingAsset {
   fileName: string;
   fileSize?: number;
   storagePath: string;
-  category: MarketingCategory | string;
+  categoryId: string;
+  categoryName: string;
   uploadedBy: string;
   uploadedByName: string;
   uploadedAt: Date;

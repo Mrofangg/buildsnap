@@ -4,17 +4,17 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, Upload, Share2, Heart, Download, Trash2,
-  Link2, CheckCircle, X, Calendar, User, ImageIcon
+  Link2, CheckCircle, X, Calendar, User, ImageIcon, MessageSquare
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/layout/app-shell";
-import { Button, Modal, Badge, Avatar } from "@/components/ui";
+import { Button, Modal, Avatar } from "@/components/ui";
 import { ImageUploader } from "@/components/ui/image-uploader";
 import { useToast } from "@/components/ui/toast";
 import {
   getProject, getProjectImages, toggleFavorite,
   deleteImage, createUploadLink, getProjectUploadLinks,
-  deactivateUploadLink, setCoverImage
+  deactivateUploadLink, setCoverImage, updateImageComment
 } from "@/lib/db";
 import { Project, ProjectImage, UploadLink } from "@/types";
 import { formatDate, groupImagesByDate, formatDateShort } from "@/lib/utils";
@@ -83,10 +83,26 @@ function ImageCard({
   );
 }
 
-function LightboxModal({ image, onClose, onPrev, onNext, hasPrev, hasNext }: {
+function LightboxModal({ image, onClose, onPrev, onNext, hasPrev, hasNext, onCommentSaved }: {
   image: ProjectImage; onClose: () => void; onPrev: () => void;
   onNext: () => void; hasPrev: boolean; hasNext: boolean;
+  onCommentSaved: (imageId: string, comment: string) => void;
 }) {
+  const [showComment, setShowComment] = useState(false);
+  const [comment, setComment] = useState(image.comment || "");
+  const [savingComment, setSavingComment] = useState(false);
+
+  const handleSaveComment = async () => {
+    setSavingComment(true);
+    try {
+      await updateImageComment(image.id, comment);
+      onCommentSaved(image.id, comment);
+      setShowComment(false);
+    } finally {
+      setSavingComment(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/95 flex flex-col" onClick={onClose}>
       <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -98,6 +114,13 @@ function LightboxModal({ image, onClose, onPrev, onNext, hasPrev, hasNext }: {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={(e) => { e.stopPropagation(); setComment(image.comment || ""); setShowComment(true); }}
+            className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center"
+            title="Kommentar"
+          >
+            <MessageSquare className={`w-4 h-4 ${image.comment ? "text-brand-yellow" : "text-white"}`} />
+          </button>
           <a href={image.url} target="_blank" download className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
             <Download className="w-4 h-4 text-white" />
           </a>
@@ -106,9 +129,51 @@ function LightboxModal({ image, onClose, onPrev, onNext, hasPrev, hasNext }: {
           </button>
         </div>
       </div>
+
       <div className="flex-1 flex items-center justify-center px-4 min-h-0" onClick={(e) => e.stopPropagation()}>
         <img src={image.url} alt="" className="max-w-full max-h-full object-contain rounded-2xl" />
       </div>
+
+      {/* Comment display */}
+      {image.comment && !showComment && (
+        <div className="px-4 pb-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white/10 rounded-2xl px-4 py-3">
+            <p className="text-white/60 text-xs font-semibold mb-1 flex items-center gap-1">
+              <MessageSquare className="w-3 h-3" /> Kommentar
+            </p>
+            <p className="text-white text-sm">{image.comment}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Comment editor */}
+      {showComment && (
+        <div className="px-4 pb-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white/10 rounded-2xl p-3 flex flex-col gap-2">
+            <textarea
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Kommentar hinzufügen..."
+              rows={2}
+              className="w-full bg-transparent text-white text-sm placeholder-white/40 resize-none focus:outline-none"
+              autoFocus
+            />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowComment(false)} className="text-white/50 text-xs px-3 py-1.5 rounded-xl hover:bg-white/10">
+                Abbrechen
+              </button>
+              <button
+                onClick={handleSaveComment}
+                disabled={savingComment}
+                className="bg-brand-yellow text-brand-black text-xs font-bold px-3 py-1.5 rounded-xl"
+              >
+                {savingComment ? "..." : "Speichern"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {(hasPrev || hasNext) && (
         <div className="flex justify-between px-4 py-4 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
           <button onClick={onPrev} disabled={!hasPrev} className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center disabled:opacity-30">
@@ -159,6 +224,11 @@ export default function ProjectDetailPage() {
   }, [projectId, user]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleCommentSaved = (imageId: string, comment: string) => {
+    setImages((prev) => prev.map((i) => i.id === imageId ? { ...i, comment } : i));
+    if (lightboxImg?.id === imageId) setLightboxImg((prev) => prev ? { ...prev, comment } : prev);
+  };
 
   const handleFavorite = async (img: ProjectImage) => {
     await toggleFavorite(img.id, img.isFavorite);
@@ -249,6 +319,7 @@ export default function ProjectDetailPage() {
           onNext={() => setLightboxImg(images[lightboxIndex + 1])}
           hasPrev={lightboxIndex > 0}
           hasNext={lightboxIndex < images.length - 1}
+          onCommentSaved={handleCommentSaved}
         />
       )}
 
@@ -259,7 +330,13 @@ export default function ProjectDetailPage() {
           </button>
           <div className="flex-1 min-w-0">
             <h1 className="text-xl font-black text-brand-black leading-tight">{project.name}</h1>
-            {project.phase && <Badge variant="yellow" className="mt-1">{project.phase}</Badge>}
+            {(project.projectNumber || project.location) && (
+              <p className="text-sm text-brand-gray-400 mt-0.5">
+                {project.projectNumber && `#${project.projectNumber}`}
+                {project.projectNumber && project.location && " · "}
+                {project.location}
+              </p>
+            )}
           </div>
         </div>
 
