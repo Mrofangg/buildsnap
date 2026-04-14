@@ -38,6 +38,18 @@ export interface ProjectImage {
   isExternal?: boolean;
   externalUploaderName?: string;
   comment?: string;
+  subFolderId?: string;
+}
+
+export type SubFolderType = "Produktion" | "Montage";
+
+export interface ProjectSubFolder {
+  id: string;
+  projectId: string;
+  type: SubFolderType;
+  name: string;
+  createdAt: Date;
+  order: number;
 }
 
 export interface UploadLink {

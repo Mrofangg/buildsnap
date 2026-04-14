@@ -20,7 +20,7 @@ import {
   deleteObject,
 } from "firebase/storage";
 import { db, storage } from "./firebase";
-import { Project, ProjectImage, UploadLink, AppUser, MarketingAsset, MarketingCategory } from "@/types";
+import { Project, ProjectImage, UploadLink, AppUser, MarketingAsset, MarketingCategory, ProjectSubFolder, SubFolderType } from "@/types";
 import { v4 as uuidv4 } from "uuid";
 import imageCompression from "browser-image-compression";
 
@@ -118,10 +118,11 @@ export interface UploadOptions {
   isExternal?: boolean;
   externalName?: string;
   onProgress?: (pct: number) => void;
+  subFolderId?: string;
 }
 
 export async function uploadImage(opts: UploadOptions): Promise<ProjectImage> {
-  const { projectId, file, userId, userName, isExternal, externalName, onProgress } = opts;
+  const { projectId, file, userId, userName, isExternal, externalName, onProgress, subFolderId } = opts;
 
   let uploadFile = file;
   if (file.type.startsWith("image/")) {
@@ -162,6 +163,7 @@ export async function uploadImage(opts: UploadOptions): Promise<ProjectImage> {
     isExternal: isExternal || false,
     externalUploaderName: externalName || null,
     storagePath: path,
+    subFolderId: subFolderId || null,
   };
 
   const docRef = await addDoc(collection(db, "images"), imageData);
@@ -222,6 +224,53 @@ export async function updateImageComment(imageId: string, comment: string): Prom
 
 export async function setCoverImage(projectId: string, imageUrl: string): Promise<void> {
   await updateDoc(doc(db, "projects", projectId), { coverImageUrl: imageUrl });
+}
+
+// ── Sub-Folders ────────────────────────────────────────────
+
+export async function getProjectSubFolders(projectId: string): Promise<ProjectSubFolder[]> {
+  const q = query(
+    collection(db, "projectSubFolders"),
+    where("projectId", "==", projectId),
+    orderBy("type", "asc"),
+    orderBy("order", "asc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => {
+    const data = d.data() as Record<string, unknown>;
+    return { id: d.id, ...data, createdAt: (data.createdAt as Timestamp)?.toDate() || new Date() } as ProjectSubFolder;
+  });
+}
+
+export async function createProjectSubFolder(projectId: string, type: SubFolderType, name: string): Promise<string> {
+  const existing = await getProjectSubFolders(projectId);
+  const sameType = existing.filter((f) => f.type === type);
+  const docRef = await addDoc(collection(db, "projectSubFolders"), {
+    projectId,
+    type,
+    name,
+    createdAt: serverTimestamp(),
+    order: sameType.length,
+  });
+  return docRef.id;
+}
+
+export async function deleteProjectSubFolder(id: string): Promise<void> {
+  await deleteDoc(doc(db, "projectSubFolders", id));
+}
+
+export async function getImagesBySubFolder(projectId: string, subFolderId: string): Promise<ProjectImage[]> {
+  const q = query(
+    collection(db, "images"),
+    where("projectId", "==", projectId),
+    where("subFolderId", "==", subFolderId),
+    orderBy("uploadedAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => {
+    const data = d.data() as Record<string, unknown>;
+    return { id: d.id, ...data, uploadedAt: (data.uploadedAt as Timestamp)?.toDate() || new Date() } as ProjectImage;
+  });
 }
 
 export async function deleteImage(image: ProjectImage): Promise<void> {
