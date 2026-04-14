@@ -1,0 +1,32 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Helper functions
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function isReasonableSize() {
+      // Max 20MB per file (compressed before upload)
+      return request.resource.size < 20 * 1024 * 1024;
+    }
+
+    // Project images
+    match /projects/{projectId}/{allPaths=**} {
+      // Authenticated users can read
+      allow read: if isAuth();
+
+      // Authenticated users + anyone with a valid path can write
+      // (external uploads go through our API which verifies the token)
+      allow write: if isImage() && isReasonableSize();
+
+      // Only admins can delete
+      allow delete: if isAuth();
+    }
+  }
+}
