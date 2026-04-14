@@ -294,22 +294,36 @@ export default function ProjectDetailPage() {
     if (lightboxImg?.id === imageId) setLightboxImg((prev) => prev ? { ...prev, comment } : prev);
   };
 
+  const [savingElement, setSavingElement] = useState(false);
+
   const handleAddElement = async (type: SubFolderType) => {
     if (!newElementName.trim() || !user) return;
-    const existing = subFolders.filter((f) => f.type === type);
-    const name = newElementName.trim() || `Element ${existing.length + 1}`;
-    await createProjectSubFolder(projectId, type, name);
-    setNewElementName("");
-    setShowAddElement(null);
-    load();
-    toast(`${name} erstellt`, "success");
+    setSavingElement(true);
+    try {
+      const name = newElementName.trim();
+      await createProjectSubFolder(projectId, type, name);
+      setNewElementName("");
+      setShowAddElement(null);
+      await load();
+      toast(`${name} erstellt`, "success");
+    } catch (e) {
+      console.error("Fehler beim Erstellen des Elements:", e);
+      toast("Fehler beim Erstellen", "error");
+    } finally {
+      setSavingElement(false);
+    }
   };
 
   const handleDeleteFolder = async (folder: ProjectSubFolder) => {
     if (!confirm(`"${folder.name}" wirklich löschen?`)) return;
-    await deleteProjectSubFolder(folder.id);
-    load();
-    toast("Ordner gelöscht", "info");
+    try {
+      await deleteProjectSubFolder(folder.id);
+      await load();
+      toast("Ordner gelöscht", "info");
+    } catch (e) {
+      console.error(e);
+      toast("Fehler beim Löschen", "error");
+    }
   };
 
   const handleCreateLink = async () => {
@@ -588,7 +602,8 @@ export default function ProjectDetailPage() {
             <Button variant="ghost" className="flex-1" onClick={() => setShowAddElement(null)}>Abbrechen</Button>
             <Button variant="primary" className="flex-1"
               onClick={() => showAddElement && handleAddElement(showAddElement)}
-              disabled={!newElementName.trim()}>
+              disabled={!newElementName.trim() || savingElement}
+              loading={savingElement}>
               Erstellen
             </Button>
           </div>
