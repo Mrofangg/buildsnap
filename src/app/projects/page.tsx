@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import Link from "next/link";
-import { Plus, FolderOpen, Image as ImageIcon, Search, X, ChevronDown } from "lucide-react";
+import { Plus, FolderOpen, Image as ImageIcon, Search, X, ChevronDown, ArrowUp, ArrowDown } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/layout/app-shell";
 import { Button, Modal, Input } from "@/components/ui";
@@ -80,9 +80,10 @@ function SkeletonCard() {
 }
 
 type SortMode = "name" | "number";
+type SortDirection = "asc" | "desc";
 
 export default function ProjectsPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { toast } = useToast();
   const [projects, setProjects] = useState<Project[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -93,23 +94,48 @@ export default function ProjectsPage() {
   const [search, setSearch] = useState("");
   const [filterLeader, setFilterLeader] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("number");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const defaultFilterApplied = useRef(false);
 
-  const load = async () => {
+  const isManager = user?.role === "admin" || user?.role === "projektleiter";
+
+  // Standardmässig auf die Projekte des eingeloggten Nutzers filtern.
+  // Marketing-Rolle ausgenommen (hat typischerweise keine eigenen Projekte).
+  // Der User kann den Filter jederzeit manuell ändern — danach bleibt die Auswahl bestehen.
+  useEffect(() => {
+    if (user && !defaultFilterApplied.current) {
+      if (user.role !== "marketing") {
+        setFilterLeader(user.uid);
+      }
+      defaultFilterApplied.current = true;
+    }
+  }, [user]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
     try {
       const [data, userList] = await Promise.all([
-        getProjects({ userId: user?.uid, role: user?.role }),
-        user?.role === "admin" ? getUsers() : Promise.resolve([]),
+        getProjects(),
+        isManager ? getUsers() : Promise.resolve([]),
       ]);
       setProjects(data);
-      setUsers(userList);
+      setUsers(userList as AppUser[]);
     } catch {
       toast("Fehler beim Laden", "error");
     } finally {
       setLoading(false);
     }
-  };
+  }, [isManager]);
 
-  useEffect(() => { load(); }, [user]);
+  // Load once auth is ready
+  useEffect(() => { if (!authLoading && user) load(); }, [user, authLoading]);
+
+  // Reload every time the page becomes visible (navigating back from detail)
+  useEffect(() => {
+    const onVisible = () => { if (!document.hidden && user && !authLoading) load(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [load, user, authLoading]);
 
   const leaders = useMemo(() => {
     const map = new Map<string, string>();
@@ -131,16 +157,19 @@ export default function ProjectsPage() {
     });
 
     list = [...list].sort((a, b) => {
+      let cmp = 0;
       if (sortMode === "number") {
         const na = a.projectNumber || "";
         const nb = b.projectNumber || "";
-        return na.localeCompare(nb, undefined, { numeric: true });
+        cmp = na.localeCompare(nb, undefined, { numeric: true });
+      } else {
+        cmp = a.name.localeCompare(b.name);
       }
-      return a.name.localeCompare(b.name);
+      return sortDirection === "asc" ? cmp : -cmp;
     });
 
     return list;
-  }, [projects, search, filterLeader, sortMode]);
+  }, [projects, search, filterLeader, sortMode, sortDirection]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -168,7 +197,7 @@ export default function ProjectsPage() {
     }
   };
 
-  const canCreate = user?.role === "admin";
+  const canCreate = isManager;
 
   return (
     <AppShell>
@@ -209,28 +238,28 @@ export default function ProjectsPage() {
 
         {/* Filter + Sort row */}
         <div className="flex gap-2 mb-4">
-          {/* Projektleiter filter */}
-          {leaders.length > 0 && (
-            <div className="relative flex-1">
-              <select
-                value={filterLeader}
-                onChange={(e) => setFilterLeader(e.target.value)}
-                className="w-full appearance-none pl-3 pr-7 py-2.5 bg-white rounded-2xl text-sm border border-brand-gray-100 focus:outline-none focus:border-brand-yellow shadow-card text-brand-gray-500 font-medium"
-              >
-                <option value="">Alle Leiter</option>
-                {leaders.map(([id, name]) => (
-                  <option key={id} value={id}>{name}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-brand-gray-400 pointer-events-none" />
-            </div>
-          )}
+          {/* Projektleiter filter — always visible, options from users list (managers) or project data (all) */}
+          <div className="relative flex-1">
+            <select
+              value={filterLeader}
+              onChange={(e) => setFilterLeader(e.target.value)}
+              style={{ WebkitAppearance: "none", MozAppearance: "none", appearance: "none", backgroundImage: "none" }}
+              className="w-full appearance-none pl-3 pr-7 py-2.5 bg-white rounded-2xl text-sm border border-brand-gray-100 focus:outline-none focus:border-brand-yellow shadow-card text-brand-gray-500 font-medium"
+            >
+              <option value="">Alle Leiter</option>
+              {(users.length > 0 ? users.map((u) => ({ uid: u.uid, displayName: u.displayName })) : leaders.map(([id, name]) => ({ uid: id, displayName: name }))).map((u) => (
+                <option key={u.uid} value={u.uid}>{u.displayName}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-brand-gray-400 pointer-events-none" />
+          </div>
 
           {/* Sort */}
           <div className="relative">
             <select
               value={sortMode}
               onChange={(e) => setSortMode(e.target.value as SortMode)}
+              style={{ WebkitAppearance: "none", MozAppearance: "none", appearance: "none", backgroundImage: "none" }}
               className="appearance-none pl-3 pr-7 py-2.5 bg-white rounded-2xl text-sm border border-brand-gray-100 focus:outline-none focus:border-brand-yellow shadow-card text-brand-gray-500 font-medium"
             >
               <option value="number">Nr.</option>
@@ -238,12 +267,27 @@ export default function ProjectsPage() {
             </select>
             <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-brand-gray-400 pointer-events-none" />
           </div>
+
+          {/* Sortierrichtung */}
+          <button
+            type="button"
+            onClick={() => setSortDirection((d) => (d === "asc" ? "desc" : "asc"))}
+            aria-label={sortDirection === "asc" ? "Aufsteigend — zu absteigend wechseln" : "Absteigend — zu aufsteigend wechseln"}
+            title={sortDirection === "asc" ? "Aufsteigend" : "Absteigend"}
+            className="px-3 py-2.5 bg-white rounded-2xl text-sm border border-brand-gray-100 focus:outline-none focus:border-brand-yellow shadow-card text-brand-gray-500 font-medium flex items-center justify-center active:scale-95 transition-transform"
+          >
+            {sortDirection === "asc" ? (
+              <ArrowUp className="w-4 h-4" />
+            ) : (
+              <ArrowDown className="w-4 h-4" />
+            )}
+          </button>
         </div>
 
         {/* List */}
         {loading ? (
-          <div className="flex flex-col gap-4">
-            {[1, 2, 3].map((i) => <SkeletonCard key={i} />)}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map((i) => <SkeletonCard key={i} />)}
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-4">
@@ -252,10 +296,20 @@ export default function ProjectsPage() {
             </div>
             <div className="text-center">
               <p className="font-bold text-brand-gray-500">
-                {search || filterLeader ? "Keine Treffer" : "Keine Projekte"}
+                {search
+                  ? "Keine Treffer"
+                  : filterLeader && filterLeader === user?.uid
+                    ? "Keine eigenen Projekte"
+                    : filterLeader
+                      ? "Keine Treffer"
+                      : "Keine Projekte"}
               </p>
               <p className="text-sm text-brand-gray-300 mt-1">
-                {canCreate && !search && !filterLeader ? "Erstelle dein erstes Projekt" : "Filter anpassen"}
+                {canCreate && !search && !filterLeader
+                  ? "Erstelle dein erstes Projekt"
+                  : filterLeader && filterLeader === user?.uid
+                    ? "Alle Projekte anzeigen?"
+                    : "Filter anpassen"}
               </p>
             </div>
             {canCreate && !search && !filterLeader && (
@@ -264,9 +318,14 @@ export default function ProjectsPage() {
                 Projekt erstellen
               </Button>
             )}
+            {filterLeader && filterLeader === user?.uid && (
+              <Button variant="ghost" onClick={() => setFilterLeader("")}>
+                Alle Projekte anzeigen
+              </Button>
+            )}
           </div>
         ) : (
-          <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
             {filtered.map((p) => <ProjectCard key={p.id} project={p} />)}
           </div>
         )}
@@ -311,11 +370,9 @@ export default function ProjectsPage() {
                 className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow"
               >
                 <option value="">Kein Projektleiter</option>
-                {users
-                  .filter((u) => u.role === "employee" || u.role === "admin")
-                  .map((u) => (
-                    <option key={u.uid} value={u.uid}>{u.displayName}</option>
-                  ))}
+                {users.map((u) => (
+                  <option key={u.uid} value={u.uid}>{u.displayName}</option>
+                ))}
               </select>
             </div>
           )}
