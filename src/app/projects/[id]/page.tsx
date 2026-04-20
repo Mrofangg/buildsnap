@@ -5,7 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft, Upload, Share2, Heart, Download, Trash2,
   Link2, CheckCircle, X, ImageIcon, MessageSquare,
-  Folder, FolderOpen, Plus, ChevronDown, ChevronRight
+  Folder, FolderOpen, Plus, ChevronDown, ChevronRight,
+  Pencil, CheckSquare, Square
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/layout/app-shell";
@@ -16,9 +17,10 @@ import {
   getProject, getProjectImages, toggleFavorite,
   deleteImage, createUploadLink, getProjectUploadLinks,
   deactivateUploadLink, setCoverImage, updateImageComment,
-  getProjectSubFolders, createProjectSubFolder, deleteProjectSubFolder
+  getProjectSubFolders, createProjectSubFolder, deleteProjectSubFolder,
+  renameProjectSubFolder, updateProject, deleteProject, getUsers
 } from "@/lib/db";
-import { Project, ProjectImage, UploadLink, ProjectSubFolder, SubFolderType } from "@/types";
+import { Project, ProjectImage, UploadLink, ProjectSubFolder, SubFolderType, AppUser } from "@/types";
 import { formatDate } from "@/lib/utils";
 
 // ── Lightbox ───────────────────────────────────────────────
@@ -114,84 +116,132 @@ function LightboxModal({ image, onClose, onPrev, onNext, hasPrev, hasNext, onCom
 
 // ── Image card (mini) ──────────────────────────────────────
 
-function ImageThumb({ image, onClick, onFavorite, onDelete, onSetCover, canDelete, canSetCover, isCover }: {
+function ImageThumb({ image, onClick, onFavorite, onDelete, onSetCover, canDelete, canSetCover, isCover,
+  selectMode, selected, onToggleSelect }: {
   image: ProjectImage; onClick: () => void; onFavorite: () => void;
   onDelete: () => void; onSetCover: () => void;
   canDelete: boolean; canSetCover: boolean; isCover: boolean;
+  selectMode?: boolean; selected?: boolean; onToggleSelect?: () => void;
 }) {
   return (
-    <div className="relative rounded-2xl overflow-hidden bg-brand-gray-100 aspect-square group">
-      <img src={image.url} alt="" className="w-full h-full object-cover cursor-pointer" onClick={onClick} />
-      {isCover && (
-        <div className="absolute top-2 left-2 bg-brand-yellow text-brand-black text-[9px] font-bold px-1.5 py-0.5 rounded-lg">Titelbild</div>
-      )}
-      <button onClick={(e) => { e.stopPropagation(); onFavorite(); }}
-        className={`absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition-all ${image.isFavorite ? "bg-red-500 text-white" : "bg-black/30 text-white/80"}`}>
-        <Heart className="w-3.5 h-3.5" fill={image.isFavorite ? "white" : "none"} />
-      </button>
-      {image.comment && (
-        <div className="absolute bottom-2 left-2">
-          <MessageSquare className="w-3.5 h-3.5 text-brand-yellow" />
+    <div
+      className={`relative rounded-2xl overflow-hidden bg-brand-gray-100 aspect-square group ${selectMode ? "cursor-pointer" : ""} ${selected ? "ring-2 ring-brand-yellow" : ""}`}
+      onClick={selectMode ? onToggleSelect : undefined}
+    >
+      <img src={image.url} alt="" className={`w-full h-full object-cover ${selectMode ? "" : "cursor-pointer"}`}
+        onClick={selectMode ? undefined : onClick} />
+      {selectMode && (
+        <div className="absolute top-2 left-2">
+          {selected
+            ? <CheckSquare className="w-5 h-5 text-brand-yellow drop-shadow" />
+            : <Square className="w-5 h-5 text-white drop-shadow" />}
         </div>
       )}
-      <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        {canSetCover && !isCover && (
-          <button onClick={(e) => { e.stopPropagation(); onSetCover(); }}
-            className="w-6 h-6 rounded-full bg-brand-yellow/90 flex items-center justify-center">
-            <ImageIcon className="w-3 h-3 text-brand-black" />
+      {!selectMode && isCover && (
+        <div className="absolute top-2 left-2 bg-brand-yellow text-brand-black text-[9px] font-bold px-1.5 py-0.5 rounded-lg">Titelbild</div>
+      )}
+      {!selectMode && (
+        <>
+          <button onClick={(e) => { e.stopPropagation(); onFavorite(); }}
+            className={`absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition-all ${image.isFavorite ? "bg-red-500 text-white" : "bg-black/30 text-white/80"}`}>
+            <Heart className="w-3.5 h-3.5" fill={image.isFavorite ? "white" : "none"} />
           </button>
-        )}
-        {canDelete && (
-          <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            className="w-6 h-6 rounded-full bg-black/40 flex items-center justify-center">
-            <Trash2 className="w-3 h-3 text-white" />
-          </button>
-        )}
-      </div>
+          {image.comment && (
+            <div className="absolute bottom-2 left-2">
+              <MessageSquare className="w-3.5 h-3.5 text-brand-yellow" />
+            </div>
+          )}
+          <div className="absolute bottom-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {canSetCover && !isCover && (
+              <button onClick={(e) => { e.stopPropagation(); onSetCover(); }}
+                className="w-6 h-6 rounded-full bg-brand-yellow/90 flex items-center justify-center">
+                <ImageIcon className="w-3 h-3 text-brand-black" />
+              </button>
+            )}
+            {canDelete && (
+              <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                className="w-6 h-6 rounded-full bg-black/40 flex items-center justify-center">
+                <Trash2 className="w-3 h-3 text-white" />
+              </button>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 // ── Sub-folder element row ─────────────────────────────────
 
-function ElementRow({ folder, images, onUpload, onDelete, onImageClick, onFavorite, onDeleteImage, onSetCover,
-  canManage, canDelete, canSetCover, coverImageUrl, lightboxImages }: {
+function ElementRow({ folder, images, onUpload, onDelete, onRename, onImageClick, onFavorite, onDeleteImage, onSetCover,
+  canDeleteFolder, canSetCover, coverImageUrl, lightboxImages, getCanDeleteImage,
+  selectMode, selectedIds, onToggleSelect }: {
   folder: ProjectSubFolder;
   images: ProjectImage[];
   onUpload: () => void;
   onDelete: () => void;
+  onRename: (newName: string) => void;
   onImageClick: (img: ProjectImage, allImages: ProjectImage[]) => void;
   onFavorite: (img: ProjectImage) => void;
   onDeleteImage: (img: ProjectImage) => void;
   onSetCover: (img: ProjectImage) => void;
-  canManage: boolean;
-  canDelete: boolean;
+  canDeleteFolder: boolean;
   canSetCover: boolean;
   coverImageUrl?: string;
   lightboxImages: ProjectImage[];
+  getCanDeleteImage: (img: ProjectImage) => boolean;
+  selectMode: boolean;
+  selectedIds: Set<string>;
+  onToggleSelect: (img: ProjectImage) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState(folder.name);
+
+  const handleRenameSubmit = () => {
+    if (editName.trim() && editName.trim() !== folder.name) {
+      onRename(editName.trim());
+    }
+    setEditing(false);
+  };
+
   return (
     <div className="border border-brand-gray-100 rounded-2xl overflow-hidden bg-white">
-      <button onClick={() => setOpen(!open)}
+      <button onClick={() => !editing && setOpen(!open)}
         className="w-full flex items-center justify-between px-4 py-3 active:bg-brand-gray-50">
-        <div className="flex items-center gap-3">
-          {open ? <FolderOpen className="w-5 h-5 text-brand-yellow" /> : <Folder className="w-5 h-5 text-brand-gray-400" />}
-          <span className="font-semibold text-brand-black text-sm">{folder.name}</span>
-          <span className="text-xs text-brand-gray-400 bg-brand-gray-100 px-2 py-0.5 rounded-full">{images.length}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {canManage && (
-            <button onClick={(e) => { e.stopPropagation(); onUpload(); }}
-              className="w-7 h-7 rounded-xl bg-brand-yellow flex items-center justify-center">
-              <Upload className="w-3.5 h-3.5 text-brand-black" />
-            </button>
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          {open ? <FolderOpen className="w-5 h-5 text-brand-yellow flex-shrink-0" /> : <Folder className="w-5 h-5 text-brand-gray-400 flex-shrink-0" />}
+          {editing ? (
+            <input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onBlur={handleRenameSubmit}
+              onKeyDown={(e) => { if (e.key === "Enter") handleRenameSubmit(); if (e.key === "Escape") { setEditName(folder.name); setEditing(false); } }}
+              onClick={(e) => e.stopPropagation()}
+              autoFocus
+              className="flex-1 bg-brand-gray-50 text-brand-black text-sm font-semibold px-2 py-1 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-yellow min-w-0"
+            />
+          ) : (
+            <span className="font-semibold text-brand-black text-sm truncate">{folder.name}</span>
           )}
-          {canDelete && (
-            <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
-              className="w-7 h-7 rounded-xl bg-brand-gray-100 flex items-center justify-center">
-              <Trash2 className="w-3 h-3 text-brand-gray-400" />
-            </button>
+          <span className="text-xs text-brand-gray-400 bg-brand-gray-100 px-2 py-0.5 rounded-full flex-shrink-0">{images.length}</span>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+          <button onClick={(e) => { e.stopPropagation(); onUpload(); }}
+            className="w-7 h-7 rounded-xl bg-brand-yellow flex items-center justify-center">
+            <Upload className="w-3.5 h-3.5 text-brand-black" />
+          </button>
+          {canDeleteFolder && (
+            <>
+              <button onClick={(e) => { e.stopPropagation(); setEditName(folder.name); setEditing(true); setOpen(true); }}
+                className="w-7 h-7 rounded-xl bg-brand-gray-100 flex items-center justify-center">
+                <Pencil className="w-3 h-3 text-brand-gray-500" />
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                className="w-7 h-7 rounded-xl bg-brand-gray-100 flex items-center justify-center">
+                <Trash2 className="w-3 h-3 text-brand-gray-400" />
+              </button>
+            </>
           )}
           {open ? <ChevronDown className="w-4 h-4 text-brand-gray-400" /> : <ChevronRight className="w-4 h-4 text-brand-gray-400" />}
         </div>
@@ -201,7 +251,7 @@ function ElementRow({ folder, images, onUpload, onDelete, onImageClick, onFavori
           {images.length === 0 ? (
             <div className="flex flex-col items-center py-6 gap-2">
               <p className="text-xs text-brand-gray-300">Noch keine Fotos</p>
-              {canManage && <button onClick={onUpload} className="text-xs text-brand-yellow font-semibold">+ Fotos hochladen</button>}
+              <button onClick={onUpload} className="text-xs text-brand-yellow font-semibold">+ Fotos hochladen</button>
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-2 mt-1">
@@ -211,8 +261,9 @@ function ElementRow({ folder, images, onUpload, onDelete, onImageClick, onFavori
                   onFavorite={() => onFavorite(img)}
                   onDelete={() => onDeleteImage(img)}
                   onSetCover={() => onSetCover(img)}
-                  canDelete={canDelete} canSetCover={canSetCover}
-                  isCover={coverImageUrl === img.url} />
+                  canDelete={getCanDeleteImage(img)} canSetCover={canSetCover}
+                  isCover={coverImageUrl === img.url}
+                  selectMode={selectMode} selected={selectedIds.has(img.id)} onToggleSelect={() => onToggleSelect(img)} />
               ))}
             </div>
           )}
@@ -235,9 +286,9 @@ export default function ProjectDetailPage() {
   const [images, setImages] = useState<ProjectImage[]>([]);
   const [subFolders, setSubFolders] = useState<ProjectSubFolder[]>([]);
   const [links, setLinks] = useState<UploadLink[]>([]);
+  const [allUsers, setAllUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
-  const [uploadSubFolderId, setUploadSubFolderId] = useState<string | undefined>();
   const [showShare, setShowShare] = useState(false);
   const [lightboxImg, setLightboxImg] = useState<ProjectImage | null>(null);
   const [lightboxList, setLightboxList] = useState<ProjectImage[]>([]);
@@ -245,19 +296,26 @@ export default function ProjectDetailPage() {
   const [copied, setCopied] = useState<string | null>(null);
   const [showAddElement, setShowAddElement] = useState<SubFolderType | null>(null);
   const [newElementName, setNewElementName] = useState("");
+  const [uploadSelection, setUploadSelection] = useState<string>("");
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [downloading, setDownloading] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [p, imgs, folders, lnks] = await Promise.all([
+      const isManagerRole = user?.role === "admin" || user?.role === "projektleiter";
+      const [p, imgs, folders, lnks, usrs] = await Promise.all([
         getProject(projectId),
-        getProjectImages(projectId),
-        getProjectSubFolders(projectId),
-        user?.role === "admin" ? getProjectUploadLinks(projectId) : Promise.resolve([]),
+        getProjectImages(projectId).catch(() => []),
+        getProjectSubFolders(projectId).catch(() => []),
+        isManagerRole ? getProjectUploadLinks(projectId).catch(() => []) : Promise.resolve([]),
+        isManagerRole ? getUsers().catch(() => []) : Promise.resolve([]),
       ]);
       setProject(p);
-      setImages(imgs);
-      setSubFolders(folders);
-      setLinks(lnks);
+      setImages(imgs as ProjectImage[]);
+      setSubFolders(folders as ProjectSubFolder[]);
+      setLinks(lnks as UploadLink[]);
+      setAllUsers(usrs as AppUser[]);
     } catch (e) {
       console.error(e);
       toast("Fehler beim Laden", "error");
@@ -274,6 +332,11 @@ export default function ProjectDetailPage() {
   };
 
   const handleDelete = async (img: ProjectImage) => {
+    if (!user) return;
+    if (!isManager && img.uploadedBy !== user.uid) {
+      toast("Du kannst nur deine eigenen Fotos löschen", "error");
+      return;
+    }
     if (!confirm("Foto wirklich löschen?")) return;
     await deleteImage(img);
     setImages((prev) => prev.filter((i) => i.id !== img.id));
@@ -292,22 +355,133 @@ export default function ProjectDetailPage() {
     if (lightboxImg?.id === imageId) setLightboxImg((prev) => prev ? { ...prev, comment } : prev);
   };
 
+  const [savingElement, setSavingElement] = useState(false);
+  const [showEditProject, setShowEditProject] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", projectNumber: "", location: "", projectLeaderId: "", projectLeaderName: "" });
+  const [savingProject, setSavingProject] = useState(false);
+
   const handleAddElement = async (type: SubFolderType) => {
     if (!newElementName.trim() || !user) return;
-    const existing = subFolders.filter((f) => f.type === type);
-    const name = newElementName.trim() || `Element ${existing.length + 1}`;
-    await createProjectSubFolder(projectId, type, name);
-    setNewElementName("");
-    setShowAddElement(null);
-    load();
-    toast(`${name} erstellt`, "success");
+    setSavingElement(true);
+    try {
+      const name = newElementName.trim();
+      await createProjectSubFolder(projectId, type, name);
+      setNewElementName("");
+      setShowAddElement(null);
+      await load();
+      toast(`${name} erstellt`, "success");
+    } catch (e) {
+      console.error("Fehler beim Erstellen des Elements:", e);
+      toast("Fehler beim Erstellen", "error");
+    } finally {
+      setSavingElement(false);
+    }
   };
 
   const handleDeleteFolder = async (folder: ProjectSubFolder) => {
     if (!confirm(`"${folder.name}" wirklich löschen?`)) return;
-    await deleteProjectSubFolder(folder.id);
-    load();
-    toast("Ordner gelöscht", "info");
+    try {
+      await deleteProjectSubFolder(folder.id);
+      await load();
+      toast("Ordner gelöscht", "info");
+    } catch (e) {
+      console.error(e);
+      toast("Fehler beim Löschen", "error");
+    }
+  };
+
+  const handleRenameFolder = async (folder: ProjectSubFolder, newName: string) => {
+    try {
+      await renameProjectSubFolder(folder.id, newName);
+      setSubFolders((prev) => prev.map((f) => f.id === folder.id ? { ...f, name: newName } : f));
+      toast("Ordner umbenannt", "success");
+    } catch (e) {
+      console.error(e);
+      toast("Fehler beim Umbenennen", "error");
+    }
+  };
+
+  const handleToggleSelect = (img: ProjectImage) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(img.id)) next.delete(img.id); else next.add(img.id);
+      return next;
+    });
+  };
+
+  const handleBulkDownload = async () => {
+    const selected = images.filter((i) => selectedIds.has(i.id));
+    if (selected.length === 0) return;
+    setDownloading(true);
+    try {
+      for (const img of selected) {
+        const response = await fetch(img.url);
+        const blob = await response.blob();
+        const ext = blob.type.includes("png") ? "png" : blob.type.includes("webp") ? "webp" : "jpg";
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `${img.id}.${ext}`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        await new Promise((r) => setTimeout(r, 300));
+      }
+      toast(`${selected.length} Fotos heruntergeladen`, "success");
+      setSelectMode(false);
+      setSelectedIds(new Set());
+    } catch (e) {
+      console.error(e);
+      toast("Fehler beim Herunterladen", "error");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleOpenEditProject = () => {
+    if (!project) return;
+    setEditForm({
+      name: project.name,
+      projectNumber: project.projectNumber || "",
+      location: project.location || "",
+      projectLeaderId: project.projectLeaderId || "",
+      projectLeaderName: project.projectLeaderName || "",
+    });
+    setShowEditProject(true);
+  };
+
+  const handleSaveProject = async () => {
+    if (!project || !editForm.name.trim()) return;
+    setSavingProject(true);
+    try {
+      await updateProject(project.id, {
+        name: editForm.name.trim(),
+        projectNumber: editForm.projectNumber.trim() || undefined,
+        location: editForm.location.trim() || undefined,
+        projectLeaderId: editForm.projectLeaderId || undefined,
+        projectLeaderName: editForm.projectLeaderName || undefined,
+      });
+      setProject((prev) => prev ? { ...prev, ...editForm } : prev);
+      setShowEditProject(false);
+      toast("Projekt gespeichert", "success");
+      router.refresh();
+    } catch (e) {
+      console.error(e);
+      toast("Fehler beim Speichern", "error");
+    } finally {
+      setSavingProject(false);
+    }
+  };
+
+  const handleDeleteProject = async () => {
+    if (!project) return;
+    if (!confirm(`Projekt "${project.name}" wirklich löschen?`)) return;
+    try {
+      await deleteProject(project.id);
+      toast("Projekt gelöscht", "info");
+      router.replace("/projects");
+    } catch (e) {
+      console.error(e);
+      toast("Fehler beim Löschen", "error");
+    }
   };
 
   const handleCreateLink = async () => {
@@ -342,16 +516,26 @@ export default function ProjectDetailPage() {
 
   const lightboxIndex = lightboxImg ? lightboxList.findIndex((i) => i.id === lightboxImg.id) : -1;
 
-  const canUpload = user?.role === "admin" || user?.role === "employee";
-  const canShare = user?.role === "admin";
-  const canDelete = user?.role === "admin";
-  const canSetCover = user?.role === "admin";
-  const canManage = user?.role === "admin";
+  const isManager = user?.role === "admin" || user?.role === "projektleiter";
+  const canUpload = !!user;
+  const canShare = isManager;
+  const canDeleteFolder = isManager;
+  const canSetCover = isManager;
+  const canCreateElement = !!user;
 
   const produktionFolders = subFolders.filter((f) => f.type === "Produktion");
   const montageFolders = subFolders.filter((f) => f.type === "Montage");
-  const unassignedImages = images.filter((i) => !i.subFolderId);
+  const unassignedImages = images.filter((i) => !i.subFolderId && !i.sectionType);
+  const produktionImages = images.filter((i) => i.sectionType === "Produktion" && !i.subFolderId);
+  const montageImages = images.filter((i) => i.sectionType === "Montage" && !i.subFolderId);
   const getImagesForFolder = (folderId: string) => images.filter((i) => i.subFolderId === folderId);
+  const getCanDeleteImage = (img: ProjectImage) => isManager || img.uploadedBy === user?.uid;
+
+  // Parse upload selection: "" = Allgemein, "Produktion"/"Montage" = section, else = folderId
+  const isSectionSelection = uploadSelection === "Produktion" || uploadSelection === "Montage";
+  const uploadSubFolderIdFinal = !isSectionSelection && uploadSelection ? uploadSelection : undefined;
+  const uploadSectionTypeFinal = isSectionSelection ? uploadSelection as SubFolderType :
+    uploadSelection ? subFolders.find(f => f.id === uploadSelection)?.type : undefined;
 
   if (loading) {
     return (
@@ -404,6 +588,18 @@ export default function ProjectDetailPage() {
               {project.location}
             </p>
           </div>
+          {isManager && (
+            <div className="flex gap-1 flex-shrink-0">
+              <button onClick={handleOpenEditProject}
+                className="w-9 h-9 rounded-xl bg-brand-gray-100 flex items-center justify-center">
+                <Pencil className="w-4 h-4 text-brand-gray-500" />
+              </button>
+              <button onClick={handleDeleteProject}
+                className="w-9 h-9 rounded-xl bg-brand-gray-100 flex items-center justify-center">
+                <Trash2 className="w-4 h-4 text-red-400" />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Cover */}
@@ -419,13 +615,32 @@ export default function ProjectDetailPage() {
 
         {/* Actions */}
         <div className="flex gap-2">
-          {canUpload && (
-            <Button variant="primary" size="sm" className="flex-1" onClick={() => { setUploadSubFolderId(undefined); setShowUpload(true); }}>
+          {canUpload && !selectMode && (
+            <Button variant="primary" size="sm" className="flex-1" onClick={() => { setUploadSelection(""); setShowUpload(true); }}>
               <Upload className="w-4 h-4" />
               Fotos hochladen
             </Button>
           )}
-          {canShare && (
+          {!selectMode && (
+            <Button variant="ghost" size="sm" onClick={() => { setSelectMode(true); setSelectedIds(new Set()); }}>
+              <CheckSquare className="w-4 h-4" />
+              Auswählen
+            </Button>
+          )}
+          {selectMode && (
+            <>
+              <Button variant="ghost" size="sm" onClick={() => {
+                if (selectedIds.size === images.length) setSelectedIds(new Set());
+                else setSelectedIds(new Set(images.map((i) => i.id)));
+              }}>
+                {selectedIds.size === images.length ? "Alle abwählen" : "Alle wählen"}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => { setSelectMode(false); setSelectedIds(new Set()); }}>
+                <X className="w-4 h-4" /> Abbrechen
+              </Button>
+            </>
+          )}
+          {canShare && !selectMode && (
             <Button variant="ghost" size="sm" onClick={() => setShowShare(true)}>
               <Share2 className="w-4 h-4" />
               Teilen
@@ -453,17 +668,39 @@ export default function ProjectDetailPage() {
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <h2 className="font-black text-brand-black text-base">Produktion</h2>
-            {canManage && (
-              <button onClick={() => { setShowAddElement("Produktion"); setNewElementName(`Element ${produktionFolders.length + 1}`); }}
-                className="flex items-center gap-1 text-xs font-semibold text-brand-yellow">
-                <Plus className="w-3.5 h-3.5" /> Element
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {canUpload && (
+                <button onClick={() => { setUploadSelection("Produktion"); setShowUpload(true); }}
+                  className="flex items-center gap-1 text-xs font-semibold text-brand-gray-500">
+                  <Upload className="w-3.5 h-3.5" /> Fotos
+                </button>
+              )}
+              {canCreateElement && (
+                <button onClick={() => { setShowAddElement("Produktion"); setNewElementName(`Element ${produktionFolders.length + 1}`); }}
+                  className="flex items-center gap-1 text-xs font-semibold text-brand-yellow">
+                  <Plus className="w-3.5 h-3.5" /> Element
+                </button>
+              )}
+            </div>
           </div>
-          {produktionFolders.length === 0 ? (
+          {produktionImages.length > 0 && (
+            <div className="grid grid-cols-3 gap-2">
+              {produktionImages.map((img) => (
+                <ImageThumb key={img.id} image={img}
+                  onClick={() => openLightbox(img, produktionImages)}
+                  onFavorite={() => handleFavorite(img)}
+                  onDelete={() => handleDelete(img)}
+                  onSetCover={() => handleSetCover(img)}
+                  canDelete={getCanDeleteImage(img)} canSetCover={canSetCover}
+                  isCover={project.coverImageUrl === img.url}
+                  selectMode={selectMode} selected={selectedIds.has(img.id)} onToggleSelect={() => handleToggleSelect(img)} />
+              ))}
+            </div>
+          )}
+          {produktionFolders.length === 0 && produktionImages.length === 0 ? (
             <div className="bg-white rounded-2xl px-4 py-5 text-center shadow-card">
               <p className="text-xs text-brand-gray-300">Noch keine Elemente</p>
-              {canManage && <button onClick={() => { setShowAddElement("Produktion"); setNewElementName("Element 1"); }}
+              {canCreateElement && <button onClick={() => { setShowAddElement("Produktion"); setNewElementName("Element 1"); }}
                 className="text-xs text-brand-yellow font-semibold mt-1">+ Element hinzufügen</button>}
             </div>
           ) : (
@@ -471,14 +708,16 @@ export default function ProjectDetailPage() {
               <ElementRow key={folder.id} folder={folder}
                 images={getImagesForFolder(folder.id)}
                 lightboxImages={images.filter((i) => i.subFolderId === folder.id)}
-                onUpload={() => { setUploadSubFolderId(folder.id); setShowUpload(true); }}
+                onUpload={() => { setUploadSelection(folder.id); setShowUpload(true); }}
                 onDelete={() => handleDeleteFolder(folder)}
+                onRename={(name) => handleRenameFolder(folder, name)}
                 onImageClick={openLightbox}
                 onFavorite={handleFavorite}
                 onDeleteImage={handleDelete}
                 onSetCover={handleSetCover}
-                canManage={canManage} canDelete={canDelete} canSetCover={canSetCover}
-                coverImageUrl={project.coverImageUrl} />
+                canDeleteFolder={canDeleteFolder} canSetCover={canSetCover} getCanDeleteImage={getCanDeleteImage}
+                coverImageUrl={project.coverImageUrl}
+                selectMode={selectMode} selectedIds={selectedIds} onToggleSelect={handleToggleSelect} />
             ))
           )}
         </div>
@@ -487,17 +726,39 @@ export default function ProjectDetailPage() {
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <h2 className="font-black text-brand-black text-base">Montage</h2>
-            {canManage && (
-              <button onClick={() => { setShowAddElement("Montage"); setNewElementName(`Element ${montageFolders.length + 1}`); }}
-                className="flex items-center gap-1 text-xs font-semibold text-brand-yellow">
-                <Plus className="w-3.5 h-3.5" /> Element
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {canUpload && (
+                <button onClick={() => { setUploadSelection("Montage"); setShowUpload(true); }}
+                  className="flex items-center gap-1 text-xs font-semibold text-brand-gray-500">
+                  <Upload className="w-3.5 h-3.5" /> Fotos
+                </button>
+              )}
+              {canCreateElement && (
+                <button onClick={() => { setShowAddElement("Montage"); setNewElementName(`Element ${montageFolders.length + 1}`); }}
+                  className="flex items-center gap-1 text-xs font-semibold text-brand-yellow">
+                  <Plus className="w-3.5 h-3.5" /> Element
+                </button>
+              )}
+            </div>
           </div>
-          {montageFolders.length === 0 ? (
+          {montageImages.length > 0 && (
+            <div className="grid grid-cols-3 gap-2">
+              {montageImages.map((img) => (
+                <ImageThumb key={img.id} image={img}
+                  onClick={() => openLightbox(img, montageImages)}
+                  onFavorite={() => handleFavorite(img)}
+                  onDelete={() => handleDelete(img)}
+                  onSetCover={() => handleSetCover(img)}
+                  canDelete={getCanDeleteImage(img)} canSetCover={canSetCover}
+                  isCover={project.coverImageUrl === img.url}
+                  selectMode={selectMode} selected={selectedIds.has(img.id)} onToggleSelect={() => handleToggleSelect(img)} />
+              ))}
+            </div>
+          )}
+          {montageFolders.length === 0 && montageImages.length === 0 ? (
             <div className="bg-white rounded-2xl px-4 py-5 text-center shadow-card">
               <p className="text-xs text-brand-gray-300">Noch keine Elemente</p>
-              {canManage && <button onClick={() => { setShowAddElement("Montage"); setNewElementName("Element 1"); }}
+              {canCreateElement && <button onClick={() => { setShowAddElement("Montage"); setNewElementName("Element 1"); }}
                 className="text-xs text-brand-yellow font-semibold mt-1">+ Element hinzufügen</button>}
             </div>
           ) : (
@@ -505,14 +766,16 @@ export default function ProjectDetailPage() {
               <ElementRow key={folder.id} folder={folder}
                 images={getImagesForFolder(folder.id)}
                 lightboxImages={images.filter((i) => i.subFolderId === folder.id)}
-                onUpload={() => { setUploadSubFolderId(folder.id); setShowUpload(true); }}
+                onUpload={() => { setUploadSelection(folder.id); setShowUpload(true); }}
                 onDelete={() => handleDeleteFolder(folder)}
+                onRename={(name) => handleRenameFolder(folder, name)}
                 onImageClick={openLightbox}
                 onFavorite={handleFavorite}
                 onDeleteImage={handleDelete}
                 onSetCover={handleSetCover}
-                canManage={canManage} canDelete={canDelete} canSetCover={canSetCover}
-                coverImageUrl={project.coverImageUrl} />
+                canDeleteFolder={canDeleteFolder} canSetCover={canSetCover} getCanDeleteImage={getCanDeleteImage}
+                coverImageUrl={project.coverImageUrl}
+                selectMode={selectMode} selectedIds={selectedIds} onToggleSelect={handleToggleSelect} />
             ))
           )}
         </div>
@@ -528,8 +791,9 @@ export default function ProjectDetailPage() {
                   onFavorite={() => handleFavorite(img)}
                   onDelete={() => handleDelete(img)}
                   onSetCover={() => handleSetCover(img)}
-                  canDelete={canDelete} canSetCover={canSetCover}
-                  isCover={project.coverImageUrl === img.url} />
+                  canDelete={getCanDeleteImage(img)} canSetCover={canSetCover}
+                  isCover={project.coverImageUrl === img.url}
+                  selectMode={selectMode} selected={selectedIds.has(img.id)} onToggleSelect={() => handleToggleSelect(img)} />
               ))}
             </div>
           </div>
@@ -537,33 +801,32 @@ export default function ProjectDetailPage() {
       </div>
 
       {/* Upload Modal */}
-      <Modal open={showUpload} onClose={() => setShowUpload(false)} title="Fotos hochladen">
+      <Modal open={showUpload} onClose={() => { setShowUpload(false); setUploadSelection(""); }} title="Fotos hochladen">
         <div className="flex flex-col gap-4">
-          {subFolders.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-semibold text-brand-gray-600">In Ordner ablegen</label>
-              <select value={uploadSubFolderId || ""}
-                onChange={(e) => setUploadSubFolderId(e.target.value || undefined)}
-                className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow">
-                <option value="">Allgemein (kein Ordner)</option>
-                {["Produktion", "Montage"].map((type) => {
-                  const folders = subFolders.filter((f) => f.type === type);
-                  if (!folders.length) return null;
-                  return (
-                    <optgroup key={type} label={type}>
-                      {folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-                    </optgroup>
-                  );
-                })}
-              </select>
-            </div>
-          )}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-brand-gray-600">Bereich</label>
+            <select value={uploadSelection}
+              onChange={(e) => setUploadSelection(e.target.value)}
+              className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow">
+              <option value="">Allgemein</option>
+              {(["Produktion", "Montage"] as SubFolderType[]).map((type) => {
+                const folders = subFolders.filter((f) => f.type === type);
+                return (
+                  <optgroup key={type} label={type}>
+                    <option value={type}>{type} (allgemein)</option>
+                    {folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </optgroup>
+                );
+              })}
+            </select>
+          </div>
           <ImageUploader
             projectId={projectId}
             userId={user?.uid}
             userName={user?.displayName}
-            subFolderId={uploadSubFolderId}
-            onComplete={() => { setShowUpload(false); load(); }}
+            subFolderId={uploadSubFolderIdFinal}
+            sectionType={uploadSectionTypeFinal}
+            onComplete={() => { setShowUpload(false); setUploadSelection(""); load(); }}
           />
         </div>
       </Modal>
@@ -585,12 +848,80 @@ export default function ProjectDetailPage() {
             <Button variant="ghost" className="flex-1" onClick={() => setShowAddElement(null)}>Abbrechen</Button>
             <Button variant="primary" className="flex-1"
               onClick={() => showAddElement && handleAddElement(showAddElement)}
-              disabled={!newElementName.trim()}>
+              disabled={!newElementName.trim() || savingElement}
+              loading={savingElement}>
               Erstellen
             </Button>
           </div>
         </div>
       </Modal>
+
+      {/* Edit Project Modal */}
+      <Modal open={showEditProject} onClose={() => setShowEditProject(false)} title="Projekt bearbeiten">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-brand-gray-600">Name *</label>
+            <input type="text" value={editForm.name}
+              onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+              className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-brand-gray-600">Projektnummer</label>
+            <input type="text" value={editForm.projectNumber}
+              onChange={(e) => setEditForm((f) => ({ ...f, projectNumber: e.target.value }))}
+              placeholder="z.B. 2024-01"
+              className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-brand-gray-600">Ort</label>
+            <input type="text" value={editForm.location}
+              onChange={(e) => setEditForm((f) => ({ ...f, location: e.target.value }))}
+              placeholder="z.B. Zürich"
+              className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-brand-gray-600">Projektleiter</label>
+            <select
+              value={editForm.projectLeaderId}
+              onChange={(e) => {
+                const selected = allUsers.find((u) => u.uid === e.target.value);
+                setEditForm((f) => ({
+                  ...f,
+                  projectLeaderId: e.target.value,
+                  projectLeaderName: selected?.displayName || "",
+                }));
+              }}
+              className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow">
+              <option value="">Kein Projektleiter</option>
+              {allUsers.map((u) => (
+                <option key={u.uid} value={u.uid}>{u.displayName}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="ghost" className="flex-1" onClick={() => setShowEditProject(false)}>Abbrechen</Button>
+            <Button variant="primary" className="flex-1"
+              onClick={handleSaveProject}
+              disabled={!editForm.name.trim() || savingProject}
+              loading={savingProject}>
+              Speichern
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk download bar */}
+      {selectMode && selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
+          <button
+            onClick={handleBulkDownload}
+            disabled={downloading}
+            className="flex items-center gap-2 bg-brand-black text-white font-bold text-sm px-6 py-3.5 rounded-2xl shadow-xl active:scale-95 transition-transform disabled:opacity-60">
+            <Download className="w-4 h-4" />
+            {downloading ? "Wird heruntergeladen…" : `${selectedIds.size} Foto${selectedIds.size !== 1 ? "s" : ""} herunterladen`}
+          </button>
+        </div>
+      )}
 
       {/* Share Modal */}
       <Modal open={showShare} onClose={() => setShowShare(false)} title="Projekt teilen">

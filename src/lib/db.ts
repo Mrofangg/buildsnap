@@ -63,26 +63,12 @@ export async function createProject(data: {
   return docRef.id;
 }
 
-export async function getProjects(options?: {
-  userId?: string;
-  role?: string;
-}): Promise<Project[]> {
-  let q;
-  // Employees only see projects where they are the leader
-  if (options?.role === "employee" && options?.userId) {
-    q = query(
-      collection(db, "projects"),
-      where("active", "==", true),
-      where("projectLeaderId", "==", options.userId),
-      orderBy("createdAt", "desc")
-    );
-  } else {
-    q = query(
-      collection(db, "projects"),
-      where("active", "==", true),
-      orderBy("createdAt", "desc")
-    );
-  }
+export async function getProjects(): Promise<Project[]> {
+  const q = query(
+    collection(db, "projects"),
+    where("active", "==", true),
+    orderBy("createdAt", "desc")
+  );
   const snap = await getDocs(q);
   return snap.docs.map((d) => {
     const data = d.data() as Record<string, unknown>;
@@ -104,6 +90,13 @@ export async function getProject(id: string): Promise<Project | null> {
   } as Project;
 }
 
+export async function updateProject(id: string, data: {
+  name?: string; projectNumber?: string; location?: string; description?: string;
+  projectLeaderId?: string; projectLeaderName?: string;
+}): Promise<void> {
+  await updateDoc(doc(db, "projects", id), data);
+}
+
 export async function deleteProject(id: string): Promise<void> {
   await updateDoc(doc(db, "projects", id), { active: false });
 }
@@ -119,10 +112,11 @@ export interface UploadOptions {
   externalName?: string;
   onProgress?: (pct: number) => void;
   subFolderId?: string;
+  sectionType?: string;
 }
 
 export async function uploadImage(opts: UploadOptions): Promise<ProjectImage> {
-  const { projectId, file, userId, userName, isExternal, externalName, onProgress, subFolderId } = opts;
+  const { projectId, file, userId, userName, isExternal, externalName, onProgress, subFolderId, sectionType } = opts;
 
   let uploadFile = file;
   if (file.type.startsWith("image/")) {
@@ -164,6 +158,7 @@ export async function uploadImage(opts: UploadOptions): Promise<ProjectImage> {
     externalUploaderName: externalName || null,
     storagePath: path,
     subFolderId: subFolderId || null,
+    sectionType: sectionType || null,
   };
 
   const docRef = await addDoc(collection(db, "images"), imageData);
@@ -231,28 +226,33 @@ export async function setCoverImage(projectId: string, imageUrl: string): Promis
 export async function getProjectSubFolders(projectId: string): Promise<ProjectSubFolder[]> {
   const q = query(
     collection(db, "projectSubFolders"),
-    where("projectId", "==", projectId),
-    orderBy("type", "asc"),
-    orderBy("order", "asc")
+    where("projectId", "==", projectId)
   );
   const snap = await getDocs(q);
-  return snap.docs.map((d) => {
+  const folders = snap.docs.map((d) => {
     const data = d.data() as Record<string, unknown>;
     return { id: d.id, ...data, createdAt: (data.createdAt as Timestamp)?.toDate() || new Date() } as ProjectSubFolder;
+  });
+  // Sort client-side: Produktion before Montage, then by order
+  return folders.sort((a, b) => {
+    if (a.type !== b.type) return a.type === "Produktion" ? -1 : 1;
+    return (a.order ?? 0) - (b.order ?? 0);
   });
 }
 
 export async function createProjectSubFolder(projectId: string, type: SubFolderType, name: string): Promise<string> {
-  const existing = await getProjectSubFolders(projectId);
-  const sameType = existing.filter((f) => f.type === type);
   const docRef = await addDoc(collection(db, "projectSubFolders"), {
     projectId,
     type,
     name,
     createdAt: serverTimestamp(),
-    order: sameType.length,
+    order: Date.now(),
   });
   return docRef.id;
+}
+
+export async function renameProjectSubFolder(id: string, name: string): Promise<void> {
+  await updateDoc(doc(db, "projectSubFolders", id), { name });
 }
 
 export async function deleteProjectSubFolder(id: string): Promise<void> {

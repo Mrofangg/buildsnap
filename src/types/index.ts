@@ -1,4 +1,4 @@
-export type UserRole = "admin" | "employee" | "marketing";
+export type UserRole = "admin" | "projektleiter" | "employee" | "marketing";
 
 export interface AppUser {
   uid: string;
@@ -39,6 +39,7 @@ export interface ProjectImage {
   externalUploaderName?: string;
   comment?: string;
   subFolderId?: string;
+  sectionType?: SubFolderType;
 }
 
 export type SubFolderType = "Produktion" | "Montage";
