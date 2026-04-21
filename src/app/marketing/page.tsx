@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   FileText, Image as ImageIcon, Upload, Download, Trash2,
-  Plus, File, Folder, ArrowLeft, FolderPlus, X,
+  Plus, File, Folder, ArrowLeft, FolderPlus, X, Pencil,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/layout/app-shell";
@@ -11,7 +11,7 @@ import { Button, Modal, Input } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 import {
   getMarketingCategories, createMarketingCategory, deleteMarketingCategory,
-  getMarketingAssets, uploadMarketingAsset, deleteMarketingAsset,
+  getMarketingAssets, uploadMarketingAsset, deleteMarketingAsset, updateMarketingAsset,
 } from "@/lib/db";
 import { MarketingCategory, MarketingAsset } from "@/types";
 import { formatDateShort } from "@/lib/utils";
@@ -71,9 +71,11 @@ function CategoryFolderCard({ category, count, canDelete, onDelete, onClick }: {
 
 // ── Asset Card ─────────────────────────────────────────────
 
-function AssetCard({ asset, canDelete, onDelete }: {
+function AssetCard({ asset, canEdit, canDelete, onEdit, onDelete }: {
   asset: MarketingAsset;
+  canEdit: boolean;
   canDelete: boolean;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
   const isImage = asset.fileType.startsWith("image/");
@@ -121,6 +123,12 @@ function AssetCard({ asset, canDelete, onDelete }: {
             className="w-8 h-8 rounded-xl bg-brand-gray-50 flex items-center justify-center active:scale-95 transition-transform">
             <Download className="w-3.5 h-3.5 text-brand-gray-500" />
           </a>
+          {canEdit && (
+            <button onClick={(e) => { e.stopPropagation(); onEdit(); }}
+              className="w-8 h-8 rounded-xl bg-brand-gray-50 flex items-center justify-center active:scale-95 transition-transform">
+              <Pencil className="w-3.5 h-3.5 text-brand-gray-500" />
+            </button>
+          )}
           {canDelete && (
             <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
               className="w-8 h-8 rounded-xl bg-brand-gray-50 flex items-center justify-center active:scale-95 transition-transform">
@@ -159,6 +167,11 @@ export default function MarketingPage() {
   const [uploadDesc, setUploadDesc] = useState("");
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+
+  // Edit asset
+  const [editAsset, setEditAsset] = useState<MarketingAsset | null>(null);
+  const [editForm, setEditForm] = useState({ title: "", description: "", categoryId: "" });
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const canManage = user?.role === "admin";
 
@@ -268,6 +281,50 @@ export default function MarketingPage() {
     setAssets((prev) => prev.filter((a) => a.id !== asset.id));
     loadCategories(); // update counts
     toast("Gelöscht", "info");
+  };
+
+  // Open edit modal
+  const handleOpenEditAsset = (asset: MarketingAsset) => {
+    setEditAsset(asset);
+    setEditForm({
+      title: asset.title,
+      description: asset.description || "",
+      categoryId: asset.categoryId,
+    });
+  };
+
+  // Save edit
+  const handleSaveEditAsset = async () => {
+    if (!editAsset || !editForm.title.trim()) return;
+    const targetCategory = categories.find((c) => c.id === editForm.categoryId);
+    if (!targetCategory) return;
+
+    setSavingEdit(true);
+    try {
+      await updateMarketingAsset(editAsset.id, {
+        title: editForm.title.trim(),
+        description: editForm.description.trim() || null,
+        categoryId: targetCategory.id,
+        categoryName: targetCategory.name,
+      });
+      toast("Gespeichert", "success");
+      setEditAsset(null);
+      // Wenn Kategorie geändert wurde und aktuelle Kategorie offen ist,
+      // aus der Liste entfernen (Asset ist nun in anderer Kategorie).
+      if (openCategory && targetCategory.id !== openCategory.id) {
+        setAssets((prev) => prev.filter((a) => a.id !== editAsset.id));
+      } else {
+        setAssets((prev) => prev.map((a) => a.id === editAsset.id
+          ? { ...a, title: editForm.title.trim(), description: editForm.description.trim() || undefined, categoryId: targetCategory.id, categoryName: targetCategory.name }
+          : a));
+      }
+      loadCategories(); // Counts aktualisieren
+    } catch (e) {
+      console.error(e);
+      toast("Fehler beim Speichern", "error");
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   // ── Folder list view ───────────────────────────────────
@@ -402,7 +459,9 @@ export default function MarketingPage() {
               <AssetCard
                 key={asset.id}
                 asset={asset}
+                canEdit={canManage}
                 canDelete={canManage}
+                onEdit={() => handleOpenEditAsset(asset)}
                 onDelete={() => handleDeleteAsset(asset)}
               />
             ))}
@@ -474,6 +533,46 @@ export default function MarketingPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Edit Asset Modal */}
+      <Modal open={!!editAsset} onClose={() => { if (!savingEdit) setEditAsset(null); }} title="Dokument bearbeiten">
+        <div className="flex flex-col gap-4">
+          <Input
+            label="Titel *"
+            placeholder="z.B. Inserat Luzerner Zeitung 2026"
+            value={editForm.title}
+            onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))}
+            required
+          />
+          <Input
+            label="Beschreibung (optional)"
+            placeholder="Kurze Beschreibung..."
+            value={editForm.description}
+            onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+          />
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-brand-gray-600">Kategorie</label>
+            <select
+              value={editForm.categoryId}
+              onChange={(e) => setEditForm((f) => ({ ...f, categoryId: e.target.value }))}
+              className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow">
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <Button type="button" variant="ghost" className="flex-1" disabled={savingEdit} onClick={() => setEditAsset(null)}>
+              Abbrechen
+            </Button>
+            <Button type="button" variant="primary" className="flex-1" loading={savingEdit}
+              disabled={!editForm.title.trim() || !editForm.categoryId}
+              onClick={handleSaveEditAsset}>
+              Speichern
+            </Button>
+          </div>
+        </div>
       </Modal>
     </AppShell>
   );

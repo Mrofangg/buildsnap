@@ -435,3 +435,15 @@ export async function deleteMarketingAsset(asset: MarketingAsset): Promise<void>
   try { await deleteObject(storageRef); } catch {}
   await updateDoc(doc(db, "marketingAssets", asset.id), { active: false });
 }
+
+export async function updateMarketingAsset(id: string, data: {
+  title?: string; description?: string | null;
+  categoryId?: string; categoryName?: string;
+}): Promise<void> {
+  // Firestore akzeptiert kein `undefined` — wir filtern es raus.
+  const clean: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (v !== undefined) clean[k] = v;
+  }
+  await updateDoc(doc(db, "marketingAssets", id), clean);
+}
