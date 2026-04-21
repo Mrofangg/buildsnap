@@ -532,12 +532,19 @@ export default function ProjectDetailPage() {
     try {
       await updateProject(project.id, {
         name: editForm.name.trim(),
+        projectNumber: editForm.projectNumber.trim() || null,
+        location: editForm.location.trim() || null,
+        projectLeaderId: editForm.projectLeaderId || null,
+        projectLeaderName: editForm.projectLeaderName || null,
+      });
+      setProject((prev) => prev ? {
+        ...prev,
+        name: editForm.name.trim(),
         projectNumber: editForm.projectNumber.trim() || undefined,
         location: editForm.location.trim() || undefined,
         projectLeaderId: editForm.projectLeaderId || undefined,
         projectLeaderName: editForm.projectLeaderName || undefined,
-      });
-      setProject((prev) => prev ? { ...prev, ...editForm } : prev);
+      } : prev);
       setShowEditProject(false);
       toast("Projekt gespeichert", "success");
       router.refresh();

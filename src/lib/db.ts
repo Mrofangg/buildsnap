@@ -91,10 +91,15 @@ export async function getProject(id: string): Promise<Project | null> {
 }
 
 export async function updateProject(id: string, data: {
-  name?: string; projectNumber?: string; location?: string; description?: string;
-  projectLeaderId?: string; projectLeaderName?: string;
+  name?: string; projectNumber?: string | null; location?: string | null; description?: string | null;
+  projectLeaderId?: string | null; projectLeaderName?: string | null;
 }): Promise<void> {
-  await updateDoc(doc(db, "projects", id), data);
+  // Firestore akzeptiert kein `undefined` — wir filtern es raus. null bleibt erhalten (löscht das Feld).
+  const clean: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (v !== undefined) clean[k] = v;
+  }
+  await updateDoc(doc(db, "projects", id), clean);
 }
 
 export async function deleteProject(id: string): Promise<void> {
