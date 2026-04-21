@@ -28,5 +28,12 @@ service firebase.storage {
       // Only admins can delete
       allow delete: if isAuth();
     }
+
+    // Marketing assets (PDFs, images, presentations, etc.)
+    match /marketing/{allPaths=**} {
+      allow read: if isAuth();
+      allow write: if isAuth() && request.resource.size < 50 * 1024 * 1024;
+      allow delete: if isAuth();
+    }
   }
 }
