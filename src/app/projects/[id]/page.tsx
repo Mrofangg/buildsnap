@@ -437,6 +437,51 @@ export default function ProjectDetailPage() {
   const [showEditProject, setShowEditProject] = useState(false);
   const [editForm, setEditForm] = useState({ name: "", projectNumber: "", location: "", projectLeaderId: "", projectLeaderName: "" });
   const [savingProject, setSavingProject] = useState(false);
+  const [showBulkMove, setShowBulkMove] = useState(false);
+  const [bulkMoveSelection, setBulkMoveSelection] = useState<string>("");
+  const [bulkMoving, setBulkMoving] = useState(false);
+
+  const handleBulkMove = async () => {
+    const selected = images.filter((i) => selectedIds.has(i.id));
+    if (selected.length === 0) return;
+
+    // Nicht-Manager dürfen nur eigene Fotos verschieben
+    if (!isManager) {
+      const unauthorized = selected.some((i) => i.uploadedBy !== user?.uid);
+      if (unauthorized) {
+        toast("Du kannst nur eigene Fotos verschieben", "error");
+        return;
+      }
+    }
+
+    const isSection = bulkMoveSelection === "Produktion" || bulkMoveSelection === "Montage";
+    const newSubFolderId = !isSection && bulkMoveSelection ? bulkMoveSelection : null;
+    const newSectionType: SubFolderType | null = isSection
+      ? (bulkMoveSelection as SubFolderType)
+      : bulkMoveSelection
+        ? (subFolders.find((f) => f.id === bulkMoveSelection)?.type || null)
+        : null;
+
+    setBulkMoving(true);
+    try {
+      for (const img of selected) {
+        await moveImage(img.id, newSubFolderId, newSectionType);
+      }
+      setImages((prev) => prev.map((i) => selectedIds.has(i.id)
+        ? { ...i, subFolderId: newSubFolderId || undefined, sectionType: newSectionType || undefined }
+        : i));
+      toast(`${selected.length} Foto${selected.length !== 1 ? "s" : ""} verschoben`, "success");
+      setShowBulkMove(false);
+      setSelectMode(false);
+      setSelectedIds(new Set());
+      setBulkMoveSelection("");
+    } catch (e) {
+      console.error(e);
+      toast("Fehler beim Verschieben", "error");
+    } finally {
+      setBulkMoving(false);
+    }
+  };
 
   const handleAddElement = async (type: SubFolderType) => {
     if (!newElementName.trim() || !user) return;
@@ -998,18 +1043,59 @@ export default function ProjectDetailPage() {
         </div>
       </Modal>
 
-      {/* Bulk download bar */}
+      {/* Bulk action bar (move + download) */}
       {selectMode && selectedIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-brand-black rounded-2xl shadow-xl flex items-stretch overflow-hidden">
+          <div className="px-4 py-3.5 text-white font-bold text-sm flex items-center border-r border-white/10">
+            {selectedIds.size} ausgewählt
+          </div>
+          <button
+            onClick={() => { setBulkMoveSelection(""); setShowBulkMove(true); }}
+            disabled={downloading || bulkMoving}
+            className="flex items-center gap-2 text-white font-semibold text-sm px-4 py-3.5 hover:bg-white/10 active:scale-95 transition-transform disabled:opacity-60 border-r border-white/10">
+            <Folder className="w-4 h-4" />
+            Verschieben
+          </button>
           <button
             onClick={handleBulkDownload}
-            disabled={downloading}
-            className="flex items-center gap-2 bg-brand-black text-white font-bold text-sm px-6 py-3.5 rounded-2xl shadow-xl active:scale-95 transition-transform disabled:opacity-60">
+            disabled={downloading || bulkMoving}
+            className="flex items-center gap-2 text-white font-semibold text-sm px-4 py-3.5 hover:bg-white/10 active:scale-95 transition-transform disabled:opacity-60">
             <Download className="w-4 h-4" />
-            {downloading ? "Wird heruntergeladen…" : `${selectedIds.size} Foto${selectedIds.size !== 1 ? "s" : ""} herunterladen`}
+            {downloading ? "…" : "Download"}
           </button>
         </div>
       )}
+
+      {/* Bulk Move Modal */}
+      <Modal open={showBulkMove} onClose={() => { if (!bulkMoving) setShowBulkMove(false); }} title={`${selectedIds.size} Foto${selectedIds.size !== 1 ? "s" : ""} verschieben`}>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-brand-gray-600">Ziel-Ordner</label>
+            <select value={bulkMoveSelection}
+              onChange={(e) => setBulkMoveSelection(e.target.value)}
+              className="w-full px-4 py-3 bg-brand-gray-50 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-yellow">
+              <option value="">Allgemein</option>
+              {(["Produktion", "Montage"] as SubFolderType[]).map((type) => {
+                const folders = subFolders.filter((f) => f.type === type);
+                return (
+                  <optgroup key={type} label={type}>
+                    <option value={type}>{type} (allgemein)</option>
+                    {folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </optgroup>
+                );
+              })}
+            </select>
+          </div>
+          <div className="flex gap-3 pt-2">
+            <Button type="button" variant="ghost" className="flex-1" disabled={bulkMoving} onClick={() => setShowBulkMove(false)}>
+              Abbrechen
+            </Button>
+            <Button type="button" variant="primary" className="flex-1" loading={bulkMoving} onClick={handleBulkMove}>
+              Verschieben
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Share Modal */}
       <Modal open={showShare} onClose={() => setShowShare(false)} title="Projekt teilen">
