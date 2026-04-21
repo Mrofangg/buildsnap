@@ -77,54 +77,56 @@ function AssetCard({ asset, canDelete, onDelete }: {
   onDelete: () => void;
 }) {
   const isImage = asset.fileType.startsWith("image/");
+  const ext = asset.fileName.split(".").pop()?.toUpperCase() || "";
 
   return (
-    <div className="bg-white rounded-3xl overflow-hidden shadow-card">
-      {isImage ? (
-        <a href={asset.fileUrl} target="_blank" rel="noopener">
-          <div className="aspect-[4/3] overflow-hidden bg-brand-gray-100">
+    <div className="bg-white rounded-3xl overflow-hidden shadow-card active:scale-[0.98] transition-all">
+      <a href={asset.fileUrl} target="_blank" rel="noopener">
+        <div className="aspect-[16/9] bg-brand-gray-100 relative overflow-hidden">
+          {isImage ? (
             <img src={asset.fileUrl} alt={asset.title} className="w-full h-full object-cover" />
-          </div>
-        </a>
-      ) : (
-        <a href={asset.fileUrl} target="_blank" rel="noopener"
-          className="flex items-center justify-center aspect-[4/3] bg-brand-gray-50 hover:bg-brand-gray-100 transition-colors">
-          <div className="flex flex-col items-center gap-2">
-            {fileIcon(asset.fileType)}
-            <span className="text-xs text-brand-gray-400 font-medium uppercase tracking-wide">
-              {asset.fileName.split(".").pop()}
-            </span>
-          </div>
-        </a>
-      )}
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <h3 className="font-bold text-brand-black text-sm leading-tight">{asset.title}</h3>
-            {asset.description && (
-              <p className="text-xs text-brand-gray-400 mt-0.5 line-clamp-2">{asset.description}</p>
-            )}
-            <p className="text-[10px] text-brand-gray-300 mt-1.5">
-              {formatDateShort(asset.uploadedAt)} · {asset.uploadedByName}
-              {asset.fileSize ? ` · ${formatSize(asset.fileSize)}` : ""}
-            </p>
-          </div>
-          <div className="flex flex-col gap-1 flex-shrink-0">
-            <a
-              href={asset.fileUrl} target="_blank" download
-              className="w-8 h-8 rounded-xl bg-brand-gray-100 flex items-center justify-center"
-            >
-              <Download className="w-3.5 h-3.5 text-brand-gray-500" />
-            </a>
-            {canDelete && (
-              <button
-                onClick={onDelete}
-                className="w-8 h-8 rounded-xl bg-brand-gray-100 flex items-center justify-center"
-              >
-                <Trash2 className="w-3.5 h-3.5 text-brand-gray-400" />
-              </button>
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+              {fileIcon(asset.fileType)}
+              <span className="text-xs text-brand-gray-300 font-medium">{ext}</span>
+            </div>
+          )}
+          {ext && (
+            <div className="absolute top-3 left-3">
+              <span className="bg-brand-black/70 text-white text-xs font-bold px-2 py-1 rounded-lg">
+                {ext}
+              </span>
+            </div>
+          )}
+        </div>
+      </a>
+      <div className="p-4 flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="font-bold text-brand-black truncate text-base">{asset.title}</h3>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            <p className="text-xs text-brand-gray-400">{formatDateShort(asset.uploadedAt)}</p>
+            <span className="text-xs text-brand-gray-300">·</span>
+            <p className="text-xs text-brand-gray-400 truncate">{asset.uploadedByName}</p>
+            {asset.fileSize && (
+              <>
+                <span className="text-xs text-brand-gray-300">·</span>
+                <p className="text-xs text-brand-gray-400">{formatSize(asset.fileSize)}</p>
+              </>
             )}
           </div>
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <a href={asset.fileUrl} target="_blank" download
+            onClick={(e) => e.stopPropagation()}
+            className="w-8 h-8 rounded-xl bg-brand-gray-50 flex items-center justify-center active:scale-95 transition-transform">
+            <Download className="w-3.5 h-3.5 text-brand-gray-500" />
+          </a>
+          {canDelete && (
+            <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              className="w-8 h-8 rounded-xl bg-brand-gray-50 flex items-center justify-center active:scale-95 transition-transform">
+              <Trash2 className="w-3.5 h-3.5 text-brand-gray-400" />
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -309,7 +311,7 @@ export default function MarketingPage() {
               )}
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
               {categories.map((cat) => (
                 <CategoryFolderCard
                   key={cat.id}
@@ -395,7 +397,7 @@ export default function MarketingPage() {
             )}
           </div>
         ) : (
-          <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
             {assets.map((asset) => (
               <AssetCard
                 key={asset.id}
