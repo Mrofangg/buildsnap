@@ -217,6 +217,17 @@ export async function updateImageComment(imageId: string, comment: string): Prom
   await updateDoc(doc(db, "images", imageId), { comment: comment || null });
 }
 
+export async function moveImage(
+  imageId: string,
+  subFolderId: string | null,
+  sectionType: SubFolderType | null
+): Promise<void> {
+  await updateDoc(doc(db, "images", imageId), {
+    subFolderId: subFolderId || null,
+    sectionType: sectionType || null,
+  });
+}
+
 export async function setCoverImage(projectId: string, imageUrl: string): Promise<void> {
   await updateDoc(doc(db, "projects", projectId), { coverImageUrl: imageUrl });
 }

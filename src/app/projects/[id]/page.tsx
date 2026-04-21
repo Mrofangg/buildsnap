@@ -16,7 +16,7 @@ import { useToast } from "@/components/ui/toast";
 import {
   getProject, getProjectImages, toggleFavorite,
   deleteImage, createUploadLink, getProjectUploadLinks,
-  deactivateUploadLink, setCoverImage, updateImageComment,
+  deactivateUploadLink, setCoverImage, updateImageComment, moveImage,
   getProjectSubFolders, createProjectSubFolder, deleteProjectSubFolder,
   renameProjectSubFolder, updateProject, deleteProject, getUsers
 } from "@/lib/db";
@@ -25,19 +25,31 @@ import { formatDate } from "@/lib/utils";
 
 // ── Lightbox ───────────────────────────────────────────────
 
-function LightboxModal({ image, onClose, onPrev, onNext, hasPrev, hasNext, onCommentSaved }: {
+function LightboxModal({ image, onClose, onPrev, onNext, hasPrev, hasNext, onCommentSaved,
+  canMove, subFolders, onMoved }: {
   image: ProjectImage; onClose: () => void; onPrev: () => void;
   onNext: () => void; hasPrev: boolean; hasNext: boolean;
   onCommentSaved: (imageId: string, comment: string) => void;
+  canMove: boolean;
+  subFolders: ProjectSubFolder[];
+  onMoved: (imageId: string, subFolderId: string | null, sectionType: SubFolderType | null) => void;
 }) {
   const [showComment, setShowComment] = useState(false);
   const [comment, setComment] = useState(image.comment || "");
   const [savingComment, setSavingComment] = useState(false);
+  const [showMove, setShowMove] = useState(false);
+  const [moveSelection, setMoveSelection] = useState<string>("");
+  const [savingMove, setSavingMove] = useState(false);
 
   useEffect(() => {
     setComment(image.comment || "");
     setShowComment(false);
-  }, [image.id]);
+    setShowMove(false);
+    // Initial value reflects current image location
+    if (image.subFolderId) setMoveSelection(image.subFolderId);
+    else if (image.sectionType) setMoveSelection(image.sectionType);
+    else setMoveSelection("");
+  }, [image.id, image.subFolderId, image.sectionType]);
 
   const handleSaveComment = async () => {
     setSavingComment(true);
@@ -47,6 +59,25 @@ function LightboxModal({ image, onClose, onPrev, onNext, hasPrev, hasNext, onCom
       setShowComment(false);
     } finally {
       setSavingComment(false);
+    }
+  };
+
+  const handleSaveMove = async () => {
+    const isSection = moveSelection === "Produktion" || moveSelection === "Montage";
+    const newSubFolderId = !isSection && moveSelection ? moveSelection : null;
+    const newSectionType: SubFolderType | null = isSection
+      ? (moveSelection as SubFolderType)
+      : moveSelection
+        ? (subFolders.find((f) => f.id === moveSelection)?.type || null)
+        : null;
+
+    setSavingMove(true);
+    try {
+      await moveImage(image.id, newSubFolderId, newSectionType);
+      onMoved(image.id, newSubFolderId, newSectionType);
+      setShowMove(false);
+    } finally {
+      setSavingMove(false);
     }
   };
 
@@ -61,10 +92,17 @@ function LightboxModal({ image, onClose, onPrev, onNext, hasPrev, hasNext, onCom
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={(e) => { e.stopPropagation(); setComment(image.comment || ""); setShowComment(!showComment); }}
+          <button onClick={(e) => { e.stopPropagation(); setComment(image.comment || ""); setShowComment(!showComment); setShowMove(false); }}
             className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
             <MessageSquare className={`w-4 h-4 ${image.comment ? "text-brand-yellow" : "text-white"}`} />
           </button>
+          {canMove && (
+            <button onClick={(e) => { e.stopPropagation(); setShowMove(!showMove); setShowComment(false); }}
+              title="In Ordner verschieben"
+              className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center">
+              <Folder className="w-4 h-4 text-white" />
+            </button>
+          )}
           <a href={image.url} target="_blank" download className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
             <Download className="w-4 h-4 text-white" />
           </a>
@@ -95,6 +133,34 @@ function LightboxModal({ image, onClose, onPrev, onNext, hasPrev, hasNext, onCom
               <button onClick={handleSaveComment} disabled={savingComment}
                 className="bg-brand-yellow text-brand-black text-xs font-bold px-3 py-1.5 rounded-xl">
                 {savingComment ? "..." : "Speichern"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showMove && (
+        <div className="px-4 pb-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white/10 rounded-2xl p-3 flex flex-col gap-2">
+            <label className="text-white/60 text-xs font-semibold">Verschieben nach</label>
+            <select value={moveSelection} onChange={(e) => setMoveSelection(e.target.value)}
+              className="w-full bg-white/10 text-white text-sm px-3 py-2 rounded-xl focus:outline-none appearance-none"
+              style={{ WebkitAppearance: "none", MozAppearance: "none", appearance: "none", backgroundImage: "none" }}>
+              <option value="" className="text-brand-black">Allgemein</option>
+              {(["Produktion", "Montage"] as SubFolderType[]).map((type) => {
+                const folders = subFolders.filter((f) => f.type === type);
+                return (
+                  <optgroup key={type} label={type}>
+                    <option value={type} className="text-brand-black">{type} (allgemein)</option>
+                    {folders.map((f) => <option key={f.id} value={f.id} className="text-brand-black">{f.name}</option>)}
+                  </optgroup>
+                );
+              })}
+            </select>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowMove(false)} className="text-white/50 text-xs px-3 py-1.5 rounded-xl hover:bg-white/10">Abbrechen</button>
+              <button onClick={handleSaveMove} disabled={savingMove}
+                className="bg-brand-yellow text-brand-black text-xs font-bold px-3 py-1.5 rounded-xl">
+                {savingMove ? "..." : "Verschieben"}
               </button>
             </div>
           </div>
@@ -355,6 +421,18 @@ export default function ProjectDetailPage() {
     if (lightboxImg?.id === imageId) setLightboxImg((prev) => prev ? { ...prev, comment } : prev);
   };
 
+  const handleImageMoved = (imageId: string, subFolderId: string | null, sectionType: SubFolderType | null) => {
+    setImages((prev) => prev.map((i) => i.id === imageId
+      ? { ...i, subFolderId: subFolderId || undefined, sectionType: sectionType || undefined }
+      : i));
+    if (lightboxImg?.id === imageId) {
+      setLightboxImg((prev) => prev
+        ? { ...prev, subFolderId: subFolderId || undefined, sectionType: sectionType || undefined }
+        : prev);
+    }
+    toast("Foto verschoben", "success");
+  };
+
   const [savingElement, setSavingElement] = useState(false);
   const [showEditProject, setShowEditProject] = useState(false);
   const [editForm, setEditForm] = useState({ name: "", projectNumber: "", location: "", projectLeaderId: "", projectLeaderName: "" });
@@ -571,6 +649,9 @@ export default function ProjectDetailPage() {
           hasPrev={lightboxIndex > 0}
           hasNext={lightboxIndex < lightboxList.length - 1}
           onCommentSaved={handleCommentSaved}
+          canMove={isManager || lightboxImg.uploadedBy === user?.uid}
+          subFolders={subFolders}
+          onMoved={handleImageMoved}
         />
       )}
 
